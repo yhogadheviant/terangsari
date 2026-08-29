@@ -1,0 +1,6 @@
+1. Salin isi folder app ke C:\rt11-digital-v1\app (replace file yang sama).
+2. Pastikan xlsx sudah terpasang: npm install xlsx
+3. Di app/panel/page.tsx arahkan menu warga ke /panel/warga sesuai PANEL-PATCH.txt.
+4. Jalankan: npx prisma generate
+5. Jalankan: npm run dev
+6. Login sebagai ketua lalu klik Data Warga.

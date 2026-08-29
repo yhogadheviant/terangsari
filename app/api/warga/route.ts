@@ -1,0 +1,300 @@
+﻿import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+
+import { getSession } from "@/app/lib/auth/session";
+
+function ageFromBirthDate(value: string | null | undefined) {
+  if (!value) return null;
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return null;
+
+  const now = new Date();
+
+  let age = now.getFullYear() - d.getFullYear();
+
+  const m = now.getMonth() - d.getMonth();
+
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) {
+    age--;
+  }
+
+  return age < 0 ? null : age;
+}
+
+export async function GET() {
+  const session = await getSession();
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Belum login." },
+      { status: 401 }
+    );
+  }
+
+  if (!session.rTUnitId) {
+    return NextResponse.json(
+      { error: "Akun belum memiliki RT." },
+      { status: 403 }
+    );
+  }
+
+  const rows = await prisma.warga.findMany({
+    where: {
+      rTUnitId: session.rTUnitId,
+    },
+    include: {
+      kk: true,
+    },
+    orderBy: {
+      nama: "asc",
+    },
+  });
+
+  return NextResponse.json(
+    rows.map((w) => ({
+      ...w,
+      nomorKK: w.nomorKK || w.kk?.nomorKK || "",
+      alamat: w.alamat || w.kk?.alamat || "",
+      rt: w.rt || w.kk?.rt || "",
+      rw: w.rw || w.kk?.rw || "",
+      usia: w.tanggalLahir
+        ? ageFromBirthDate(w.tanggalLahir.toISOString())
+        : w.usia,
+    }))
+  );
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const b = await req.json();
+
+    if (
+      !b.nik ||
+      !b.nama ||
+      !b.jenisKelamin ||
+      !b.hubunganKeluarga
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK, nama, jenis kelamin, dan hubungan keluarga wajib diisi.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Pastikan NIK tidak sedang dimiliki
+     * oleh RT lain.
+     */
+    const existingWarga = await prisma.warga.findUnique({
+      where: {
+        nik: b.nik,
+      },
+    });
+
+    if (
+      existingWarga &&
+        existingWarga.rTUnitId !== session.rTUnitId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK tersebut sudah terdaftar pada RT lain dan tidak dapat diubah.",
+        },
+        { status: 409 }
+      );
+    }
+
+    let kkId: string | null = b.kkId || null;
+
+
+      if (kkId) {
+        const targetKKById = await prisma.kK.findUnique({
+          where: {
+            id: kkId,
+          },
+        });
+
+        if (!targetKKById) {
+          return NextResponse.json(
+            { error: "KK tidak ditemukan." },
+            { status: 404 }
+          );
+        }
+
+        if (targetKKById.rTUnitId !== session.rTUnitId) {
+          return NextResponse.json(
+            {
+              error: "KK tersebut bukan milik RT Anda.",
+            },
+            { status: 403 }
+          );
+        }
+      }
+    if (b.nomorKK) {
+      const existingKK = await prisma.kK.findUnique({
+        where: {
+          nomorKK: b.nomorKK,
+        },
+      });
+
+      if (
+        existingKK &&
+        existingKK.rTUnitId &&
+        existingKK.rTUnitId !== session.rTUnitId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Nomor KK tersebut sudah terdaftar pada RT lain dan tidak dapat digunakan.",
+          },
+          { status: 409 }
+        );
+      }
+
+      const kk = await prisma.kK.upsert({
+        where: {
+          nomorKK: b.nomorKK,
+        },
+
+        update: {
+          alamat: b.alamat || undefined,
+          rt: b.rt || undefined,
+          rw: b.rw || undefined,
+          statusTinggal: b.statusTinggal || "TETAP",
+
+          kepalaKeluarga:
+            b.hubunganKeluarga === "KEPALA_KELUARGA"
+              ? b.nama
+              : undefined,
+
+          rTUnitId: session.rTUnitId,
+        },
+
+        create: {
+          nomorKK: b.nomorKK,
+          kepalaKeluarga: b.nama,
+          alamat: b.alamat || "-",
+          rt: b.rt || null,
+          rw: b.rw || null,
+          statusTinggal: b.statusTinggal || "TETAP",
+          rTUnitId: session.rTUnitId,
+        },
+      });
+
+      kkId = kk.id;
+    }
+
+    const tanggalLahir = b.tanggalLahir
+      ? new Date(b.tanggalLahir)
+      : null;
+
+    const usia = tanggalLahir
+      ? ageFromBirthDate(tanggalLahir.toISOString())
+      : b.usia
+        ? Number(b.usia)
+        : null;
+
+    const data = {
+      nama: b.nama,
+      nomorKK: b.nomorKK || null,
+      daerahKKAsal: b.daerahKKAsal || null,
+      alamat: b.alamat || null,
+      rt: b.rt || null,
+      rw: b.rw || null,
+
+      statusTinggal:
+        b.statusTinggal || "TETAP",
+
+      jenisKelamin: b.jenisKelamin,
+      hubunganKeluarga: b.hubunganKeluarga,
+
+      tempatLahir: b.tempatLahir || null,
+      tanggalLahir,
+      usia,
+
+      golonganDarah: b.golonganDarah || null,
+      agama: b.agama || null,
+      pendidikan: b.pendidikan || null,
+      pekerjaan: b.pekerjaan || null,
+      statusKawin: b.statusKawin || null,
+
+      namaIbu: b.namaIbu || null,
+      namaAyah: b.namaAyah || null,
+
+      nomorPaspor: b.nomorPaspor || null,
+
+      tanggalAkhirPaspor:
+        b.tanggalAkhirPaspor
+          ? new Date(b.tanggalAkhirPaspor)
+          : null,
+
+      hubungan: b.hubungan || null,
+      kodeHubungan: b.kodeHubungan || null,
+
+      kkId,
+
+      /*
+       * RT ditentukan SERVER dari session.
+       * Bukan dari request browser.
+       */
+      rTUnitId: session.rTUnitId,
+    };
+
+    const warga = await prisma.warga.upsert({
+      where: {
+        nik: b.nik,
+      },
+
+      update: data,
+
+      create: {
+        nik: b.nik,
+        ...data,
+      },
+    });
+
+    return NextResponse.json(
+      warga,
+      {
+        status: existingWarga ? 200 : 201,
+      }
+    );
+  } catch (e) {
+    console.error("WARGA_API_ERROR", e);
+
+    return NextResponse.json(
+      {
+        error: "Gagal menyimpan data warga.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+
+
+
+
+

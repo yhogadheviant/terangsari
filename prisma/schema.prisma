@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role
+  wargaId      String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  rTUnitId     String?
+  rTUnit       RTUnit?  @relation(fields: [rTUnitId], references: [id])
+  warga        Warga?   @relation(fields: [wargaId], references: [id])
+}
+
+model KK {
+  id             String        @id @default(cuid())
+  nomorKK        String        @unique
+  kepalaKeluarga String
+  alamat         String
+  rt             String?
+  rw             String?
+  statusTinggal  StatusTinggal @default(TETAP)
+  nomorHP        String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  rTUnitId       String?
+  iuran          Iuran[]
+  rTUnit         RTUnit?       @relation(fields: [rTUnitId], references: [id])
+  warga          Warga[]
+}
+
+model Warga {
+  id                 String           @id @default(cuid())
+  nik                String           @unique
+  nama               String
+  nomorKK            String?
+  daerahKKAsal       String?
+  alamat             String?
+  rt                 String?
+  rw                 String?
+  statusTinggal      StatusTinggal    @default(TETAP)
+  jenisKelamin       JenisKelamin
+  hubunganKeluarga   HubunganKeluarga
+  tempatLahir        String?
+  tanggalLahir       DateTime?
+  usia               Int?
+  golonganDarah      String?
+  agama              String?
+  pendidikan         String?
+  pekerjaan          String?
+  statusKawin        String?
+  namaIbu            String?
+  namaAyah           String?
+  nomorPaspor        String?
+  tanggalAkhirPaspor DateTime?
+  hubungan           String?
+  kodeHubungan       String?
+  kkId               String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  rTUnitId           String?
+  user               User?
+  kk                 KK?              @relation(fields: [kkId], references: [id])
+  rTUnit             RTUnit?          @relation(fields: [rTUnitId], references: [id])
+
+  @@index([nama])
+  @@index([nomorKK])
+  @@index([daerahKKAsal])
+  @@index([kkId])
+  @@index([statusTinggal])
+}
+
+model TacticalFundTransaction {
+  id          String           @id @default(cuid())
+  type        TacticalFundType
+  amount      Int
+  category    String
+  description String?
+  date        DateTime         @default(now())
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  rTUnitId    String?
+  rTUnit      RTUnit?          @relation(fields: [rTUnitId], references: [id])
+
+  @@index([type])
+  @@index([date])
+  @@index([category])
+}
+
+model KasTransaction {
+  id          String             @id @default(cuid())
+  type        KasTransactionType
+  amount      Int
+  category    String
+  description String?
+  date        DateTime           @default(now())
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  rTUnitId    String?
+  rTUnit      RTUnit?            @relation(fields: [rTUnitId], references: [id])
+
+  @@index([type])
+  @@index([date])
+  @@index([category])
+}
+
+model Iuran {
+  id        String      @id @default(cuid())
+  kkId      String
+  periode   String
+  amount    Int
+  status    IuranStatus @default(BELUM_BAYAR)
+  method    String?
+  paidAt    DateTime?
+  note      String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  rTUnitId  String?
+  kk        KK          @relation(fields: [kkId], references: [id], onDelete: Cascade)
+  rTUnit    RTUnit?     @relation(fields: [rTUnitId], references: [id])
+
+  @@unique([kkId, periode])
+  @@index([periode])
+  @@index([status])
+  @@index([kkId])
+}
+
+model QRISConfig {
+  id           String   @id
+  merchantName String
+  qrisName     String
+  qrisString   String?
+  imageUrl     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  rTUnitId     String?
+  rTUnit       RTUnit?  @relation(fields: [rTUnitId], references: [id])
+}
+
+model Pengumuman {
+  id        String   @id @default(cuid())
+  judul     String
+  isi       String
+  aktif     Boolean  @default(true)
+  tanggal   DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rTUnitId  String?
+  rTUnit    RTUnit?  @relation(fields: [rTUnitId], references: [id])
+
+  @@index([aktif])
+  @@index([tanggal])
+}
+
+model Kegiatan {
+  id         String   @id @default(cuid())
+  nama       String
+  tanggal    DateTime
+  jam        String?
+  lokasi     String?
+  keterangan String?
+  aktif      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  rTUnitId   String?
+  rTUnit     RTUnit?  @relation(fields: [rTUnitId], references: [id])
+
+  @@index([tanggal])
+  @@index([aktif])
+}
+
+model RTUnit {
+  id         String                    @id @default(cuid())
+  kodeRT     String
+  kodeRW     String
+  namaRT     String
+  perumahan  String?
+  desa       String?
+  kecamatan  String?
+  kabupaten  String?
+  aktif      Boolean                   @default(true)
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+  iuran      Iuran[]
+  kks        KK[]
+  kas        KasTransaction[]
+  kegiatan   Kegiatan[]
+  pengumuman Pengumuman[]
+  qris       QRISConfig[]
+  danaTaktis TacticalFundTransaction[]
+  users      User[]
+  warga      Warga[]
+
+  @@unique([kodeRT, kodeRW])
+  @@index([aktif])
+}
+
+enum Role {
+  KETUA
+  SEKRETARIS
+  BENDAHARA
+  WARGA
+  SUPERADMIN
+}
+
+enum JenisKelamin {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum HubunganKeluarga {
+  KEPALA_KELUARGA
+  ISTRI
+  SUAMI
+  ANAK
+  ORANG_TUA
+  MERTUA
+  LAINNYA
+}
+
+enum StatusTinggal {
+  TETAP
+  SEWA
+  KONTRAK
+  MENUMPANG
+  LAINNYA
+}
+
+enum TacticalFundType {
+  MASUK
+  KELUAR
+}
+
+enum IuranStatus {
+  BELUM_BAYAR
+  LUNAS
+}
+
+enum KasTransactionType {
+  PEMASUKAN
+  PENGELUARAN
+}
+
+
+model AppSetting {
+  id        String   @id
+  key       String   @unique
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}

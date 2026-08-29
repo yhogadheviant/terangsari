@@ -1,0 +1,3824 @@
+﻿
+==============================
+FILE: C:\rt11-digital-v1\app\api\auth\login\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { setSession } from "@/app/lib/auth/session";
+import bcrypt from "bcryptjs";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+
+    const username = String(body.username ?? "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(body.password ?? "");
+
+    if (!username || !password) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Username dan password wajib diisi.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: {
+        warga: true,
+        rTUnit: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Username atau password salah.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const validPassword = await bcrypt.compare(
+      password,
+      user.passwordHash
+    );
+
+    if (!validPassword) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Username atau password salah.",
+        },
+        { status: 401 }
+      );
+    }
+
+    await setSession({
+      id: user.id,
+      username: user.username,
+      role: user.role.toLowerCase(),
+      wargaId: user.wargaId,
+      rTUnitId: user.rTUnitId,
+    });
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role.toLowerCase(),
+        wargaId: user.wargaId,
+        rTUnitId: user.rTUnitId,
+        rtUnit: user.rTUnit
+          ? {
+              id: user.rTUnit.id,
+              kodeRT: user.rTUnit.kodeRT,
+              kodeRW: user.rTUnit.kodeRW,
+              namaRT: user.rTUnit.namaRT,
+              perumahan: user.rTUnit.perumahan,
+              desa: user.rTUnit.desa,
+              kecamatan: user.rTUnit.kecamatan,
+              kabupaten: user.rTUnit.kabupaten,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    console.error("LOGIN_ERROR", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Terjadi kesalahan pada server.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\dana-taktis\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function text(v: unknown) {
+  return v == null ? "" : String(v).trim();
+}
+
+function amountNumber(v: unknown) {
+  const n = Number(String(v ?? "").replace(/[^\d-]/g, ""));
+  return Number.isFinite(n) ? Math.round(n) : NaN;
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const rows = await prisma.tacticalFundTransaction.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+      },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    });
+
+    const masuk = rows
+      .filter((x) => x.type === "MASUK")
+      .reduce((s, x) => s + x.amount, 0);
+
+    const keluar = rows
+      .filter((x) => x.type === "KELUAR")
+      .reduce((s, x) => s + x.amount, 0);
+
+    return NextResponse.json({
+      rows: rows.map((x) => ({
+        id: x.id,
+        type: x.type,
+        amount: x.amount,
+        category: x.category,
+        description: x.description,
+        date: x.date.toISOString(),
+      })),
+      summary: {
+        masuk,
+        keluar,
+        saldo: masuk - keluar,
+      },
+    });
+  } catch (error) {
+    console.error("DANA_TAKTIS_GET_ERROR", error);
+
+    return NextResponse.json(
+      {
+        error: "Gagal membaca Dana Taktis.",
+        detail: String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const type = text(body.type).toUpperCase();
+
+    if (type !== "MASUK" && type !== "KELUAR") {
+      return jsonError("Jenis transaksi tidak valid.", 400);
+    }
+
+    const amount = amountNumber(body.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonError("Nominal harus lebih dari 0.", 400);
+    }
+
+    const category = text(body.category);
+
+    if (!category) {
+      return jsonError("Kategori wajib diisi.", 400);
+    }
+
+    const date = body.date
+      ? new Date(`${text(body.date)}T00:00:00`)
+      : new Date();
+
+    if (Number.isNaN(date.getTime())) {
+      return jsonError("Tanggal tidak valid.", 400);
+    }
+
+    if (type === "KELUAR") {
+      const aggregate = await prisma.tacticalFundTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          rTUnitId: session.rTUnitId,
+          type: "MASUK",
+        },
+      });
+
+      const incoming = Number(aggregate._sum.amount ?? 0);
+
+      const outgoing = await prisma.tacticalFundTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          rTUnitId: session.rTUnitId,
+          type: "KELUAR",
+        },
+      });
+
+      const spent = Number(outgoing._sum.amount ?? 0);
+      const balance = incoming - spent;
+
+      if (amount > balance) {
+        return NextResponse.json(
+          {
+            error: "Saldo Dana Taktis tidak mencukupi.",
+            saldo: balance,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const row = await prisma.tacticalFundTransaction.create({
+      data: {
+        type: type as "MASUK" | "KELUAR",
+        amount,
+        category,
+        description: text(body.description) || null,
+        date,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    return NextResponse.json({ ok: true, row });
+  } catch (error) {
+    console.error("DANA_TAKTIS_POST_ERROR", error);
+
+    return NextResponse.json(
+      {
+        error: "Gagal menyimpan transaksi Dana Taktis.",
+        detail: String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const id = text(
+      new URL(request.url).searchParams.get("id")
+    );
+
+    if (!id) {
+      return jsonError("ID transaksi tidak ada.", 400);
+    }
+
+    const existing =
+      await prisma.tacticalFundTransaction.findFirst({
+        where: {
+          id,
+          rTUnitId: session.rTUnitId,
+        },
+      });
+
+    if (!existing) {
+      return jsonError(
+        "Transaksi tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    await prisma.tacticalFundTransaction.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("DANA_TAKTIS_DELETE_ERROR", error);
+
+    return NextResponse.json(
+      {
+        error: "Gagal menghapus transaksi.",
+        detail: String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\iuran\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+const DEFAULT_AMOUNT = 40000;
+
+function jsonError(message: string, status = 500) {
+  return NextResponse.json(
+    { error: message },
+    { status }
+  );
+}
+
+/* =========================================================
+   GET
+   Daftar KK + status iuran + QRIS
+========================================================= */
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+    const url = new URL(request.url);
+
+    const periode =
+      url.searchParams.get("periode") ||
+      new Date().toISOString().slice(0, 7);
+
+    const [kks, iuran, qris] = await Promise.all([
+      prisma.kK.findMany({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+        orderBy: {
+          kepalaKeluarga: "asc",
+        },
+        select: {
+          id: true,
+          nomorKK: true,
+          kepalaKeluarga: true,
+          alamat: true,
+          warga: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      }),
+
+      prisma.iuran.findMany({
+        where: {
+          periode,
+          kk: {
+            rTUnitId: session.rTUnitId,
+          },
+        },
+        include: {
+          kk: {
+            select: {
+              id: true,
+              nomorKK: true,
+              kepalaKeluarga: true,
+              alamat: true,
+              warga: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          kk: {
+            kepalaKeluarga: "asc",
+          },
+        },
+      }),
+
+      prisma.qRISConfig.findFirst({
+        where: {
+          rTUnitId: session.rTUnitId,
+          active: true,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+      }),
+    ]);
+
+    const iuranMap = new Map(
+      iuran.map((item) => [item.kkId, item])
+    );
+
+    const rows = kks.map((kk) => {
+      const item = iuranMap.get(kk.id);
+
+      return {
+        id: item?.id || `pending-${kk.id}`,
+        kkId: kk.id,
+        nomorKK: kk.nomorKK,
+        kepalaKeluarga: kk.kepalaKeluarga,
+        alamat: kk.alamat,
+        periode,
+        amount: item?.amount ?? DEFAULT_AMOUNT,
+        status: item?.status ?? "BELUM_BAYAR",
+        method: item?.method ?? null,
+        jumlahAnggota: kk.warga.length,
+        paidAt: item?.paidAt ?? null,
+        note: item?.note ?? null,
+      };
+    });
+
+    return NextResponse.json({
+      periode,
+      kks: kks.map((kk) => ({
+        id: kk.id,
+        nomorKK: kk.nomorKK,
+        kepalaKeluarga: kk.kepalaKeluarga,
+        alamat: kk.alamat,
+      })),
+      iuran: rows,
+      qris:
+        qris || {
+          id: "default",
+          merchantName: "",
+          qrisName: "",
+          qrisString: "",
+          imageUrl: "",
+          active: true,
+        },
+    });
+  } catch (error) {
+    console.error("GET_IURAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal mengambil data iuran."
+    );
+  }
+}
+
+/* =========================================================
+   POST
+   Catat pembayaran / Simpan Lunas
+========================================================= */
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+        // =====================================================
+    // GENERATE TAGIHAN IURAN SEMUA KK
+    // =====================================================
+
+    if (body.action === "generate") {
+      const periode = String(body.periode || "").trim();
+
+      const amount = Number(
+        body.amount || DEFAULT_AMOUNT
+      );
+
+      if (!/^\d{4}-\d{2}$/.test(periode)) {
+        return jsonError(
+          "Format periode harus YYYY-MM.",
+          400
+        );
+      }
+
+      if (!amount || amount <= 0) {
+        return jsonError(
+          "Nominal iuran tidak valid.",
+          400
+        );
+      }
+
+      // Ambil seluruh KK
+      const kks = await prisma.kK.findMany({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (kks.length === 0) {
+        return jsonError(
+          "Belum ada data KK.",
+          400
+        );
+      }
+
+      // Ambil tagihan yang sudah ada
+      const existing = await prisma.iuran.findMany({
+        where: {
+          periode,
+        },
+        select: {
+          kkId: true,
+        },
+      });
+
+      const existingSet = new Set(
+        existing.map((item) => item.kkId)
+      );
+
+      // Hanya buat tagihan yang belum ada
+      const dataBaru = kks
+        .filter((kk) => !existingSet.has(kk.id))
+        .map((kk) => ({
+          kkId: kk.id,
+          periode,
+          amount,
+          status: "BELUM_BAYAR" as const,
+        }));
+
+      if (dataBaru.length > 0) {
+        await prisma.iuran.createMany({
+          data: dataBaru,
+          skipDuplicates: true,
+        });
+      }
+
+      const totalSudahAda = existing.length;
+      const totalDitambahkan = dataBaru.length;
+
+      return NextResponse.json({
+        success: true,
+        message:
+          totalDitambahkan > 0
+            ? `Berhasil membuat ${totalDitambahkan} tagihan iuran.`
+            : "Semua KK sudah memiliki tagihan untuk periode tersebut.",
+
+        periode,
+
+        nominal: amount,
+
+        totalKK: kks.length,
+
+        sudahAda: totalSudahAda,
+
+        ditambahkan: totalDitambahkan,
+
+        totalTagihan: kks.length,
+      });
+    }
+    const kkId = String(body.kkId || "").trim();
+    const periode = String(body.periode || "").trim();
+
+    const amount = Number(body.amount || DEFAULT_AMOUNT);
+
+    const method = String(
+      body.method || "CASH"
+    ).trim();
+
+    const note =
+      body.note == null
+        ? null
+        : String(body.note).trim();
+
+    if (!kkId) {
+      return jsonError(
+        "Kepala Keluarga wajib dipilih.",
+        400
+      );
+    }
+
+    if (!periode) {
+      return jsonError(
+        "Periode wajib diisi.",
+        400
+      );
+    }
+
+    if (!amount || amount <= 0) {
+      return jsonError(
+        "Nominal pembayaran tidak valid.",
+        400
+      );
+    }
+
+    const kk = await prisma.kK.findFirst({
+      where: {
+        id: kkId,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!kk) {
+      return jsonError(
+        "Data Kepala Keluarga tidak ditemukan.",
+        404
+      );
+    }
+
+    const existing = await prisma.iuran.findUnique({
+      where: {
+        kkId_periode: {
+          kkId,
+          periode,
+        },
+      },
+    });
+
+    if (existing) {
+      if (existing.status === "LUNAS") {
+        return jsonError(
+          "Iuran KK ini sudah LUNAS untuk periode tersebut.",
+          400
+        );
+      }
+
+      const updated = await prisma.iuran.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          amount,
+          status: "LUNAS",
+          method,
+          note,
+          paidAt: new Date(),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Pembayaran berhasil dicatat.",
+        data: updated,
+      });
+    }
+
+    const created = await prisma.iuran.create({
+      data: {
+        kkId,
+        periode,
+        amount,
+        status: "LUNAS",
+        rTUnitId: session.rTUnitId,
+        method,
+        note,
+        paidAt: new Date(),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Pembayaran berhasil dicatat.",
+      data: created,
+    });
+  } catch (error) {
+    console.error("POST_IURAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal menyimpan pembayaran."
+    );
+  }
+}
+
+/* =========================================================
+   PATCH
+   Batalkan Lunas
+========================================================= */
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const rawBody = await request.text();
+
+let body: any = {};
+
+try {
+  body = rawBody
+    ? JSON.parse(rawBody)
+    : {};
+} catch (error) {
+  console.error(
+    "POST_IURAN_INVALID_JSON:",
+    rawBody
+  );
+
+  return jsonError(
+    "Data JSON dari permintaan tidak valid.",
+    400
+  );
+}
+
+    const id = String(body.id || "").trim();
+
+    if (!id) {
+      return jsonError(
+        "ID iuran wajib diisi.",
+        400
+      );
+    }
+
+    const existing = await prisma.iuran.findFirst({
+      where: {
+        id,
+        kk: {
+          rTUnitId: session.rTUnitId,
+        },
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Data iuran tidak ditemukan.",
+        404
+      );
+    }
+
+    const updated = await prisma.iuran.update({
+      where: {
+        id,
+      },
+      data: {
+        status: "BELUM_BAYAR",
+        paidAt: null,
+        method: null,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Pembayaran berhasil dibatalkan.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error(
+      "PATCH_IURAN_ERROR:",
+      error
+    );
+
+    return jsonError(
+      "Gagal membatalkan pembayaran."
+    );
+  }
+}
+
+/* =========================================================
+   PUT
+   Simpan konfigurasi QRIS
+========================================================= */
+
+export async function PUT(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const merchantName = String(
+      body.merchantName || ""
+    ).trim();
+
+    const qrisName = String(
+      body.qrisName || ""
+    ).trim();
+
+    const qrisString = String(
+      body.qrisString || ""
+    ).trim();
+
+    const imageUrl = String(
+      body.imageUrl || ""
+    ).trim();
+
+    const active =
+      body.active !== false;
+
+    const existingQris = await prisma.qRISConfig.findFirst({
+      where: {
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    const qris = existingQris
+      ? await prisma.qRISConfig.update({
+          where: {
+            id: existingQris.id,
+          },
+          data: {
+            merchantName,
+            qrisName,
+            qrisString,
+            imageUrl,
+            active,
+          },
+        })
+      : await prisma.qRISConfig.create({
+          data: {
+            id: `qris-${session.rTUnitId}`,
+            merchantName,
+            qrisName,
+            qrisString,
+            imageUrl,
+            active,
+            rTUnitId: session.rTUnitId,
+          },
+        });
+
+    return NextResponse.json({
+      success: true,
+      message: "QRIS berhasil disimpan.",
+      data: qris,
+    });
+  } catch (error) {
+    console.error(
+      "PUT_QRIS_ERROR:",
+      error
+    );
+
+    return jsonError(
+      "Gagal menyimpan QRIS."
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\iuran\rekap\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const periode =
+      new URL(request.url).searchParams.get("periode") ||
+      new Date().toISOString().slice(0, 7);
+
+    const [totalKK, iuran, qris] = await Promise.all([
+      prisma.kK.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+
+      prisma.iuran.findMany({
+        where: {
+          rTUnitId: session.rTUnitId,
+          periode,
+        },
+        include: {
+          kk: {
+            select: {
+              nomorKK: true,
+              kepalaKeluarga: true,
+              alamat: true,
+            },
+          },
+        },
+        orderBy: {
+          kk: {
+            kepalaKeluarga: "asc",
+          },
+        },
+      }),
+
+      prisma.qRISConfig.findFirst({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+    ]);
+
+    const lunas = iuran.filter(
+      (x) => x.status === "LUNAS"
+    );
+
+    const totalTagihan = totalKK * 40000;
+
+    const totalDiterima = lunas.reduce(
+      (s, x) => s + x.amount,
+      0
+    );
+
+    return NextResponse.json({
+      periode,
+      totalKK,
+      sudahBayar: lunas.length,
+      belumBayar: Math.max(
+        totalKK - lunas.length,
+        0
+      ),
+      totalTagihan,
+      totalDiterima,
+      sisaTagihan: Math.max(
+        totalTagihan - totalDiterima,
+        0
+      ),
+
+      transaksi: iuran.map((x) => ({
+        id: x.id,
+        nomorKK: x.kk.nomorKK,
+        kepalaKeluarga: x.kk.kepalaKeluarga,
+        alamat: x.kk.alamat,
+        amount: x.amount,
+        status: x.status,
+        method: x.method,
+        paidAt: x.paidAt,
+        note: x.note,
+      })),
+
+      qris:
+        qris || {
+          merchantName: "",
+          qrisName: "",
+          qrisString: "",
+          imageUrl: "",
+          active: true,
+        },
+    });
+  } catch (e) {
+    console.error("REKAP_IURAN_ERROR", e);
+
+    return NextResponse.json(
+      {
+        error: "Gagal mengambil rekap iuran.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\kas\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function clean(value: unknown): string {
+  return value == null ? "" : String(value).trim();
+}
+
+function parseAmount(value: unknown): number {
+  const n = Number(String(value ?? "").replace(/[^\d-]/g, ""));
+  return Number.isFinite(n) ? Math.round(n) : NaN;
+}
+
+function parseDate(value: unknown): Date {
+  if (!value) return new Date();
+
+  const text = clean(value);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const date = new Date(`${text}T00:00:00`);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Tanggal tidak valid.");
+  }
+
+  return date;
+}
+
+function getPeriodRange(periode: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(periode);
+
+  if (!match) {
+    throw new Error("Format periode harus YYYY-MM.");
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+
+  if (month < 1 || month > 12) {
+    throw new Error("Bulan tidak valid.");
+  }
+
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 1),
+  };
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json(
+    { success: false, error },
+    { status }
+  );
+}
+
+// =====================================================
+// GET
+// =====================================================
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+
+    const periode =
+      url.searchParams.get("periode") ||
+      new Date().toISOString().slice(0, 7);
+
+    const { start, end } = getPeriodRange(periode);
+
+    const rows = await prisma.kasTransaction.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+        date: {
+          gte: start,
+          lt: end,
+        },
+      },
+      orderBy: [
+        { date: "desc" },
+        { createdAt: "desc" },
+      ],
+    });
+
+    const normalized = rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      amount: row.amount,
+      category: row.category,
+      description: row.description,
+      date: row.date.toISOString(),
+    }));
+
+    const pemasukan = normalized
+      .filter((row) => row.type === "PEMASUKAN")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const pengeluaran = normalized
+      .filter((row) => row.type === "PENGELUARAN")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const saldo = pemasukan - pengeluaran;
+
+    return NextResponse.json({
+      success: true,
+      periode,
+      rows: normalized,
+      summary: {
+        pemasukan,
+        pengeluaran,
+        saldo,
+      },
+    });
+  } catch (error) {
+    console.error("KAS_GET_ERROR:", error);
+
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "Gagal membaca Kas RT.",
+      500
+    );
+  }
+}
+
+// =====================================================
+// POST
+// =====================================================
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const type = clean(body.type).toUpperCase();
+
+    if (type !== "PEMASUKAN" && type !== "PENGELUARAN") {
+      return jsonError("Jenis transaksi tidak valid.", 400);
+    }
+
+    const amount = parseAmount(body.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonError("Nominal harus lebih dari 0.", 400);
+    }
+
+    const category = clean(body.category);
+
+    if (!category) {
+      return jsonError("Kategori wajib diisi.", 400);
+    }
+
+    const description = clean(body.description) || null;
+    const date = parseDate(body.date);
+
+    const row = await prisma.kasTransaction.create({
+      data: {
+        type: type as "PEMASUKAN" | "PENGELUARAN",
+        amount,
+        category,
+        description,
+        date,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      ok: true,
+      row: {
+        id: row.id,
+        type: row.type,
+        amount: row.amount,
+        category: row.category,
+        description: row.description,
+        date: row.date.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("KAS_POST_ERROR:", error);
+
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "Gagal menyimpan transaksi Kas RT.",
+      500
+    );
+  }
+}
+
+// =====================================================
+// PATCH
+// =====================================================
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+    const id = clean(body.id);
+
+    if (!id) {
+      return jsonError("ID transaksi tidak ada.", 400);
+    }
+
+    const existing = await prisma.kasTransaction.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Transaksi tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    const type = clean(body.type).toUpperCase();
+
+    if (type !== "PEMASUKAN" && type !== "PENGELUARAN") {
+      return jsonError("Jenis transaksi tidak valid.", 400);
+    }
+
+    const amount = parseAmount(body.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonError("Nominal harus lebih dari 0.", 400);
+    }
+
+    const category = clean(body.category);
+
+    if (!category) {
+      return jsonError("Kategori wajib diisi.", 400);
+    }
+
+    const description = clean(body.description) || null;
+    const date = parseDate(body.date);
+
+    const row = await prisma.kasTransaction.update({
+      where: { id },
+      data: {
+        type: type as "PEMASUKAN" | "PENGELUARAN",
+        amount,
+        category,
+        description,
+        date,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      ok: true,
+      row: {
+        id: row.id,
+        type: row.type,
+        amount: row.amount,
+        category: row.category,
+        description: row.description,
+        date: row.date.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("KAS_PATCH_ERROR:", error);
+
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "Gagal mengubah transaksi Kas RT.",
+      500
+    );
+  }
+}
+
+// =====================================================
+// DELETE
+// =====================================================
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+    const id = clean(url.searchParams.get("id"));
+
+    if (!id) {
+      return jsonError("ID transaksi tidak ada.", 400);
+    }
+
+    const existing = await prisma.kasTransaction.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Transaksi tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    await prisma.kasTransaction.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      ok: true,
+    });
+  } catch (error) {
+    console.error("KAS_DELETE_ERROR:", error);
+
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "Gagal menghapus transaksi Kas RT.",
+      500
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\kas\transfer-taktis\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function clean(v: unknown) {
+  return v == null ? "" : String(v).trim();
+}
+
+function amountNumber(v: unknown) {
+  const n = Number(String(v ?? "").replace(/[^\d-]/g, ""));
+  return Number.isFinite(n) ? Math.round(n) : NaN;
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const rows = await prisma.kasTransaction.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+        category: "PENGELUARAN_KE_DANA_TAKTIS",
+      },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    });
+
+    return NextResponse.json(
+      rows.map((x) => ({
+        id: x.id,
+        amount: x.amount,
+        description: x.description,
+        date: x.date.toISOString(),
+      }))
+    );
+  } catch (e) {
+    console.error("PENGELUARAN_DANA_TAKTIS_GET_ERROR", e);
+
+    return NextResponse.json(
+      {
+        error: "Gagal membaca histori pengeluaran ke Dana Taktis.",
+        detail: String(e),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await req.json();
+    const amount = amountNumber(body.amount);
+    const description = clean(body.description);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return jsonError(
+        "Nominal pengeluaran harus lebih dari 0.",
+        400
+      );
+    }
+
+    const date = body.date
+      ? new Date(`${clean(body.date)}T00:00:00`)
+      : new Date();
+
+    if (Number.isNaN(date.getTime())) {
+      return jsonError("Tanggal tidak valid.", 400);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const masuk = await tx.kasTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          rTUnitId: session.rTUnitId,
+          type: "PEMASUKAN",
+        },
+      });
+
+      const keluar = await tx.kasTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          rTUnitId: session.rTUnitId,
+          type: "PENGELUARAN",
+        },
+      });
+
+      const saldoKas =
+        Number(masuk._sum.amount ?? 0) -
+        Number(keluar._sum.amount ?? 0);
+
+      if (amount > saldoKas) {
+        throw new Error(
+          `Saldo Kas RT tidak mencukupi. Saldo saat ini Rp ${saldoKas.toLocaleString(
+            "id-ID"
+          )}.`
+        );
+      }
+
+      const kasOut = await tx.kasTransaction.create({
+        data: {
+          type: "PENGELUARAN",
+          amount,
+          category: "PENGELUARAN_KE_DANA_TAKTIS",
+          description:
+            description ||
+            "Pengeluaran Kas RT untuk Dana Taktis",
+          date,
+          rTUnitId: session.rTUnitId,
+        },
+      });
+
+      const tacticalIn =
+        await tx.tacticalFundTransaction.create({
+          data: {
+            type: "MASUK",
+            amount,
+            category: "PENGELUARAN_DARI_KAS_RT",
+            description:
+              description ||
+              "Dana Taktis dari pengeluaran Kas RT",
+            date,
+            rTUnitId: session.rTUnitId,
+          },
+        });
+
+      return { kasOut, tacticalIn };
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: `Pengeluaran ${amount.toLocaleString(
+        "id-ID"
+      )} berhasil.`,
+      result: {
+        kasTransactionId: result.kasOut.id,
+        tacticalTransactionId: result.tacticalIn.id,
+      },
+    });
+  } catch (e: any) {
+    console.error("PENGELUARAN_DANA_TAKTIS_POST_ERROR", e);
+
+    return NextResponse.json(
+      {
+        error:
+          e?.message ||
+          "Pengeluaran Kas RT ke Dana Taktis gagal.",
+      },
+      { status: 400 }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\kegiatan\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function clean(value: unknown) {
+  return value == null ? "" : String(value).trim();
+}
+
+function parseDate(value: unknown) {
+  const text = clean(value);
+
+  if (!text) return null;
+
+  const date = new Date(`${text}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ success: false, error }, { status });
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const rows = await prisma.kegiatan.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+      },
+      orderBy: [
+        {
+          tanggal: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    return NextResponse.json({
+      success: true,
+      kegiatan: rows.map((row) => ({
+        id: row.id,
+        nama: row.nama,
+        tanggal: row.tanggal.toISOString(),
+        jam: row.jam,
+        lokasi: row.lokasi,
+        keterangan: row.keterangan,
+        aktif: row.aktif,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    console.error("KEGIATAN_GET_ERROR:", error);
+
+    return jsonError(
+      "Gagal mengambil data kegiatan.",
+      500
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const nama = clean(body.nama);
+    const tanggal = parseDate(body.tanggal);
+
+    if (!nama) {
+      return jsonError(
+        "Nama kegiatan wajib diisi.",
+        400
+      );
+    }
+
+    if (!tanggal) {
+      return jsonError(
+        "Tanggal kegiatan tidak valid.",
+        400
+      );
+    }
+
+    const row = await prisma.kegiatan.create({
+      data: {
+        nama,
+        tanggal,
+        jam: clean(body.jam) || null,
+        lokasi: clean(body.lokasi) || null,
+        keterangan: clean(body.keterangan) || null,
+        aktif: body.aktif !== false,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      kegiatan: row,
+    });
+  } catch (error) {
+    console.error("KEGIATAN_POST_ERROR:", error);
+
+    return jsonError(
+      "Gagal menyimpan kegiatan.",
+      500
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const id = clean(body.id);
+    const nama = clean(body.nama);
+    const tanggal = parseDate(body.tanggal);
+
+    if (!id) {
+      return jsonError(
+        "ID kegiatan tidak ada.",
+        400
+      );
+    }
+
+    if (!nama) {
+      return jsonError(
+        "Nama kegiatan wajib diisi.",
+        400
+      );
+    }
+
+    if (!tanggal) {
+      return jsonError(
+        "Tanggal kegiatan tidak valid.",
+        400
+      );
+    }
+
+    const existing = await prisma.kegiatan.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Kegiatan tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    const row = await prisma.kegiatan.update({
+      where: {
+        id,
+      },
+      data: {
+        nama,
+        tanggal,
+        jam: clean(body.jam) || null,
+        lokasi: clean(body.lokasi) || null,
+        keterangan: clean(body.keterangan) || null,
+        aktif: body.aktif !== false,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      kegiatan: row,
+    });
+  } catch (error) {
+    console.error("KEGIATAN_PATCH_ERROR:", error);
+
+    return jsonError(
+      "Gagal mengubah kegiatan.",
+      500
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+    const id = clean(url.searchParams.get("id"));
+
+    if (!id) {
+      return jsonError(
+        "ID kegiatan tidak ada.",
+        400
+      );
+    }
+
+    const existing = await prisma.kegiatan.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Kegiatan tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    await prisma.kegiatan.delete({
+      where: {
+        id,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error("KEGIATAN_DELETE_ERROR:", error);
+
+    return jsonError(
+      "Gagal menghapus kegiatan.",
+      500
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\kelompok-usia\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+
+const groups = [
+  { key:"0-5", label:"0â€“5 Tahun", min:0, max:5 },
+  { key:"6-12", label:"6â€“12 Tahun", min:6, max:12 },
+  { key:"13-17", label:"13â€“17 Tahun", min:13, max:17 },
+  { key:"18-25", label:"18â€“25 Tahun", min:18, max:25 },
+  { key:"26-35", label:"26â€“35 Tahun", min:26, max:35 },
+  { key:"36-45", label:"36â€“45 Tahun", min:36, max:45 },
+  { key:"46-55", label:"46â€“55 Tahun", min:46, max:55 },
+  { key:"56-65", label:"56â€“65 Tahun", min:56, max:65 },
+  { key:"65+", label:"65+ Tahun", min:66, max:999 },
+];
+
+function ageFromDate(value: Date | null) {
+  if (!value) return null;
+  const now = new Date();
+  let age = now.getFullYear() - value.getFullYear();
+  const m = now.getMonth() - value.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < value.getDate())) age--;
+  return age < 0 ? null : age;
+}
+
+export async function GET() {
+  try {
+    const warga = await prisma.warga.findMany({
+      select: {
+        id:true, nik:true, nama:true, jenisKelamin:true, usia:true,
+        tanggalLahir:true, statusTinggal:true, pekerjaan:true,
+      },
+      orderBy:{ nama:"asc" }
+    });
+
+    const normalized = warga.map(w => ({
+      ...w,
+      usia: w.tanggalLahir ? ageFromDate(w.tanggalLahir) : w.usia,
+    }));
+
+    const result = groups.map(g => {
+      const members = normalized.filter(w =>
+        typeof w.usia === "number" && w.usia >= g.min && w.usia <= g.max
+      );
+      return {
+        ...g,
+        total: members.length,
+        lakiLaki: members.filter(w=>w.jenisKelamin==="LAKI_LAKI").length,
+        perempuan: members.filter(w=>w.jenisKelamin==="PEREMPUAN").length,
+        members,
+      };
+    });
+
+    const unknown = normalized.filter(w => typeof w.usia !== "number");
+
+    return NextResponse.json({
+      totalWarga: normalized.length,
+      totalDenganUsia: normalized.filter(w=>typeof w.usia==="number").length,
+      tanpaUsia: unknown.length,
+      groups: result,
+      unknown,
+    });
+  } catch(e) {
+    console.error(e);
+    return NextResponse.json({error:"Gagal membaca kelompok usia."},{status:500});
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\kk\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+export async function GET() {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const rows = await prisma.kK.findMany({
+      where: { rTUnitId: session.rTUnitId },
+      include: {
+        warga: {
+          orderBy: { nama: "asc" },
+          select: {
+            id: true,
+            nik: true,
+            nama: true,
+            jenisKelamin: true,
+            hubunganKeluarga: true,
+            statusTinggal: true,
+            usia: true,
+            tanggalLahir: true,
+            daerahKKAsal: true,
+          },
+        },
+      },
+      orderBy: { nomorKK: "asc" },
+    });
+
+    return NextResponse.json(rows);
+  } catch (error) {
+    console.error("KK_GET_ERROR", error);
+    return NextResponse.json(
+      { error: "Gagal mengambil data KK." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+
+    if (!body.nomorKK || !body.kepalaKeluarga || !body.alamat) {
+      return NextResponse.json(
+        {
+          error:
+            "Nomor KK, kepala keluarga, dan alamat wajib diisi.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const nomorKK = String(body.nomorKK).trim();
+
+    const data = {
+      nomorKK,
+      kepalaKeluarga: String(body.kepalaKeluarga).trim(),
+      alamat: String(body.alamat).trim(),
+      rt: body.rt ? String(body.rt).trim() : null,
+      rw: body.rw ? String(body.rw).trim() : null,
+      statusTinggal: body.statusTinggal || "TETAP",
+      nomorHP: body.nomorHP ? String(body.nomorHP).trim() : null,
+      rTUnitId: session.rTUnitId,
+    };
+
+    if (body.id) {
+      const id = String(body.id);
+
+      const targetKK = await prisma.kK.findUnique({
+        where: { id },
+      });
+
+      if (!targetKK) {
+        return NextResponse.json(
+          { error: "Data KK tidak ditemukan." },
+          { status: 404 }
+        );
+      }
+
+      if (targetKK.rTUnitId !== session.rTUnitId) {
+        return NextResponse.json(
+          { error: "KK tersebut bukan milik RT Anda." },
+          { status: 403 }
+        );
+      }
+
+      const duplicate = await prisma.kK.findFirst({
+        where: {
+          nomorKK,
+          NOT: { id },
+        },
+      });
+
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "Nomor KK sudah terdaftar." },
+          { status: 409 }
+        );
+      }
+
+      const kk = await prisma.kK.update({
+        where: { id },
+        data,
+      });
+
+      return NextResponse.json(kk);
+    }
+
+    const duplicate = await prisma.kK.findUnique({
+      where: { nomorKK },
+    });
+
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "Nomor KK sudah terdaftar." },
+        { status: 409 }
+      );
+    }
+
+    const kk = await prisma.kK.create({ data });
+
+    return NextResponse.json(kk, { status: 201 });
+  } catch (error: any) {
+    console.error("KK_POST_ERROR", error);
+
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        { error: "Nomor KK sudah terdaftar." },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Gagal menyimpan data KK." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID KK tidak ditemukan." },
+        { status: 400 }
+      );
+    }
+
+    const kk = await prisma.kK.findUnique({
+      where: { id },
+      include: {
+        warga: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!kk) {
+      return NextResponse.json(
+        { error: "Data KK tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+
+    if (kk.rTUnitId !== session.rTUnitId) {
+      return NextResponse.json(
+        { error: "KK tersebut bukan milik RT Anda." },
+        { status: 403 }
+      );
+    }
+
+    if (kk.warga.length > 0) {
+      return NextResponse.json(
+        {
+          error: `KK masih memiliki ${kk.warga.length} anggota keluarga. Hapus/ubah relasi anggota terlebih dahulu.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    await prisma.kK.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("KK_DELETE_ERROR", error);
+
+    return NextResponse.json(
+      {
+        error:
+          "KK tidak dapat dihapus. Periksa anggota yang masih terkait.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\laporan\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function getPeriodRange(periode: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(periode);
+
+  if (!match) {
+    throw new Error("Format periode harus YYYY-MM.");
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+
+  if (month < 1 || month > 12) {
+    throw new Error("Bulan tidak valid.");
+  }
+
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 1),
+  };
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json(
+    { success: false, error },
+    { status }
+  );
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+
+    const periode =
+      url.searchParams.get("periode") ||
+      new Date().toISOString().slice(0, 7);
+
+    const { start, end } = getPeriodRange(periode);
+
+    // =====================================================
+    // KK & WARGA
+    // =====================================================
+
+    const [
+      totalKK,
+      totalWarga,
+      lakiLaki,
+      perempuan,
+      balita,
+      anak5_9,
+      anak10_14,
+      remaja15_19,
+      dewasa20_59,
+      lansia,
+      tetap,
+      sewa,
+      kontrak,
+      menumpang,
+      tinggalLainnya,
+    ] = await Promise.all([
+      prisma.kK.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          jenisKelamin: "LAKI_LAKI",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          jenisKelamin: "PEREMPUAN",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 0,
+            lte: 4,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 5,
+            lte: 9,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 10,
+            lte: 14,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 15,
+            lte: 19,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 20,
+            lte: 59,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 60,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "TETAP",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "SEWA",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "KONTRAK",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "MENUMPANG",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "LAINNYA",
+        },
+      }),
+    ]);
+
+    const anak = balita + anak5_9 + anak10_14 + remaja15_19;
+    const dewasa = dewasa20_59;
+
+    // =====================================================
+    // IURAN
+    // =====================================================
+
+    const iuran = await prisma.iuran.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+        periode,
+      },
+
+      select: {
+        id: true,
+        kkId: true,
+        amount: true,
+        status: true,
+        method: true,
+        paidAt: true,
+        note: true,
+
+        kk: {
+          select: {
+            nomorKK: true,
+            kepalaKeluarga: true,
+          },
+        },
+      },
+
+      orderBy: {
+        kk: {
+          kepalaKeluarga: "asc",
+        },
+      },
+    });
+
+    const lunas = iuran.filter(
+      (row) => row.status === "LUNAS"
+    );
+
+    const penerimaan = lunas.reduce(
+      (sum, row) => sum + row.amount,
+      0
+    );
+
+    const tagihan = iuran.reduce(
+      (sum, row) => sum + row.amount,
+      0
+    );
+
+    const cash = lunas
+      .filter((row) => row.method === "CASH")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const transfer = lunas
+      .filter((row) => row.method === "TRANSFER")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const qris = lunas
+      .filter((row) => row.method === "QRIS")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const iuranLainnya = lunas
+      .filter(
+        (row) =>
+          row.method &&
+          !["CASH", "TRANSFER", "QRIS"].includes(
+            row.method
+          )
+      )
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    // =====================================================
+    // DANA TAKTIS
+    // =====================================================
+
+    const danaTaktis =
+      await prisma.tacticalFundTransaction.findMany({
+        where: {
+          rTUnitId: session.rTUnitId,
+          date: {
+            gte: start,
+            lt: end,
+          },
+        },
+
+        orderBy: {
+          date: "asc",
+        },
+      });
+
+    const danaMasuk = danaTaktis
+      .filter((row) => row.type === "MASUK")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const danaKeluar = danaTaktis
+      .filter((row) => row.type === "KELUAR")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const saldoTaktis = danaMasuk - danaKeluar;
+
+    // =====================================================
+    // KAS RT
+    // =====================================================
+
+    const kas = await prisma.kasTransaction.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+        date: {
+          gte: start,
+          lt: end,
+        },
+      },
+      orderBy: [
+        {
+          date: "asc",
+        },
+        {
+          createdAt: "asc",
+        },
+      ],
+    });
+
+    const kasPemasukan = kas
+      .filter((row) => row.type === "PEMASUKAN")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const kasPengeluaran = kas
+      .filter((row) => row.type === "PENGELUARAN")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const kasSaldo = kasPemasukan - kasPengeluaran;
+
+    // =====================================================
+    // RESPONSE
+    // =====================================================
+
+    return NextResponse.json({
+      success: true,
+
+      periode,
+
+      warga: {
+        totalKK,
+        totalWarga,
+
+        jenisKelamin: {
+          lakiLaki,
+          perempuan,
+        },
+
+        kelompokUsia: {
+          balita,
+          anak5_9,
+          anak10_14,
+          remaja15_19,
+          dewasa20_59,
+          lansia,
+          anak,
+          dewasa,
+        },
+
+        statusTinggal: {
+          tetap,
+          sewa,
+          kontrak,
+          menumpang,
+          lainnya: tinggalLainnya,
+        },
+      },
+
+      iuran: {
+        totalKKWajib: totalKK,
+        totalDataIuran: iuran.length,
+
+        lunas: lunas.length,
+
+        belumBayar: Math.max(
+          totalKK - lunas.length,
+          0
+        ),
+
+        tagihan,
+        penerimaan,
+
+        metode: {
+          cash,
+          transfer,
+          qris,
+          lainnya: iuranLainnya,
+        },
+
+        daftar: iuran.map((row) => ({
+          id: row.id,
+          kkId: row.kkId,
+          nomorKK: row.kk.nomorKK,
+          kepalaKeluarga: row.kk.kepalaKeluarga,
+          amount: row.amount,
+          status: row.status,
+          method: row.method,
+          paidAt: row.paidAt,
+          note: row.note,
+        })),
+      },
+
+      kas: {
+        tersedia: true,
+        transaksi: kas.length,
+        pemasukan: kasPemasukan,
+        pengeluaran: kasPengeluaran,
+        saldo: kasSaldo,
+
+        daftar: kas.map((row) => ({
+          id: row.id,
+          type: row.type,
+          amount: row.amount,
+          category: row.category,
+          description: row.description,
+          date: row.date.toISOString(),
+        })),
+      },
+
+      danaTaktis: {
+        transaksi: danaTaktis.length,
+        masuk: danaMasuk,
+        keluar: danaKeluar,
+        saldo: saldoTaktis,
+
+        daftar: danaTaktis.map((row) => ({
+          id: row.id,
+          type: row.type,
+          amount: row.amount,
+          category: row.category,
+          description: row.description,
+          date: row.date.toISOString(),
+        })),
+      },
+
+      keuangan: {
+        iuran: penerimaan,
+        kas: kasSaldo,
+        danaTaktis: saldoTaktis,
+      },
+    });
+  } catch (error) {
+    console.error("LAPORAN_API_ERROR:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil laporan.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\laporan\laporan\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function getPeriodRange(periode: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(periode);
+
+  if (!match) {
+    throw new Error("Format periode harus YYYY-MM.");
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+
+  if (month < 1 || month > 12) {
+    throw new Error("Bulan tidak valid.");
+  }
+
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 1));
+
+  return { start, end };
+}
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json(
+    { success: false, error },
+    { status }
+  );
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+
+    const periode =
+      url.searchParams.get("periode") ||
+      new Date().toISOString().slice(0, 7);
+
+    const { start, end } = getPeriodRange(periode);
+
+    /* ==========================================
+       DATA WARGA
+    ========================================== */
+
+    const [
+      totalKK,
+      totalWarga,
+      lakiLaki,
+      perempuan,
+      anak,
+      dewasa,
+      lansia,
+      tetap,
+      sewa,
+      kontrak,
+      menumpang,
+      statusLainnya,
+    ] = await Promise.all([
+      prisma.kK.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          jenisKelamin: "LAKI_LAKI",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          jenisKelamin: "PEREMPUAN",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            lt: 17,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 17,
+            lt: 60,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          usia: {
+            gte: 60,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "TETAP",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "SEWA",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "KONTRAK",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "MENUMPANG",
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: session.rTUnitId,
+          statusTinggal: "LAINNYA",
+        },
+      }),
+    ]);
+
+    /* ==========================================
+       IURAN
+    ========================================== */
+
+    const iuran = await prisma.iuran.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+        periode,
+      },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        method: true,
+        paidAt: true,
+        kkId: true,
+      },
+    });
+
+    const iuranLunas = iuran.filter(
+      (x) => x.status === "LUNAS"
+    );
+
+    const iuranBelumBayar = iuran.filter(
+      (x) => x.status !== "LUNAS"
+    );
+
+    const totalIuran = iuranLunas.reduce(
+      (sum, x) => sum + x.amount,
+      0
+    );
+
+    const tagihanIuran = iuran.reduce(
+      (sum, x) => sum + x.amount,
+      0
+    );
+
+    /* ==========================================
+       METODE IURAN
+    ========================================== */
+
+    const cash = iuranLunas
+      .filter((x) => x.method === "CASH")
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    const transfer = iuranLunas
+      .filter((x) => x.method === "TRANSFER")
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    const qris = iuranLunas
+      .filter((x) => x.method === "QRIS")
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    const lainnya = iuranLunas
+      .filter(
+        (x) =>
+          x.method &&
+          !["CASH", "TRANSFER", "QRIS"].includes(x.method)
+      )
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    /* ==========================================
+       DANA TAKTIS
+    ========================================== */
+
+    const tactical =
+      await prisma.tacticalFundTransaction.findMany({
+        where: {
+          rTUnitId: session.rTUnitId,
+          date: {
+            gte: start,
+            lt: end,
+          },
+        },
+        orderBy: {
+          date: "asc",
+        },
+      });
+
+    const danaMasuk = tactical
+      .filter((x) => x.type === "MASUK")
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    const danaKeluar = tactical
+      .filter((x) => x.type === "KELUAR")
+      .reduce((sum, x) => sum + x.amount, 0);
+
+    const saldoTaktis = danaMasuk - danaKeluar;
+
+    /* ==========================================
+       RESPONSE
+    ========================================== */
+
+    return NextResponse.json({
+      success: true,
+
+      periode,
+
+      warga: {
+        totalKK,
+        totalWarga,
+
+        jenisKelamin: {
+          lakiLaki,
+          perempuan,
+        },
+
+        kelompokUsia: {
+          anak,
+          dewasa,
+          lansia,
+        },
+
+        statusTinggal: {
+          tetap,
+          sewa,
+          kontrak,
+          menumpang,
+          statusLainnya,
+        },
+      },
+
+      iuran: {
+        totalKKWajib: iuran.length,
+        lunas: iuranLunas.length,
+        belumBayar: iuranBelumBayar.length,
+
+        tagihan: tagihanIuran,
+        penerimaan: totalIuran,
+
+        metode: {
+          cash,
+          transfer,
+          qris,
+          lainnya,
+        },
+      },
+
+      danaTaktis: {
+        masuk: danaMasuk,
+        keluar: danaKeluar,
+        saldo: saldoTaktis,
+        transaksi: tactical,
+      },
+    });
+  } catch (error) {
+    console.error("LAPORAN_API_ERROR:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil laporan.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\pengumuman\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const data = await prisma.pengumuman.findMany({
+      where: {
+        rTUnitId: session.rTUnitId,
+      },
+      orderBy: {
+        tanggal: "desc",
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("GET_PENGUMUMAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal mengambil data pengumuman.",
+      500
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+
+    const judul = String(body.judul || "").trim();
+    const isi = String(body.isi || "").trim();
+    const aktif = body.aktif !== false;
+
+    if (!judul) {
+      return jsonError(
+        "Judul pengumuman wajib diisi.",
+        400
+      );
+    }
+
+    if (!isi) {
+      return jsonError(
+        "Isi pengumuman wajib diisi.",
+        400
+      );
+    }
+
+    const tanggal = body.tanggal
+      ? new Date(body.tanggal)
+      : new Date();
+
+    if (Number.isNaN(tanggal.getTime())) {
+      return jsonError("Tanggal tidak valid.", 400);
+    }
+
+    const data = await prisma.pengumuman.create({
+      data: {
+        judul,
+        isi,
+        aktif,
+        tanggal,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Pengumuman berhasil ditambahkan.",
+      data,
+    });
+  } catch (error) {
+    console.error("POST_PENGUMUMAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal menambahkan pengumuman.",
+      500
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const body = await request.json();
+    const id = String(body.id || "").trim();
+
+    if (!id) {
+      return jsonError(
+        "ID pengumuman wajib diisi.",
+        400
+      );
+    }
+
+    const existing = await prisma.pengumuman.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Pengumuman tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    const data: {
+      judul?: string;
+      isi?: string;
+      aktif?: boolean;
+      tanggal?: Date;
+    } = {};
+
+    if (body.judul !== undefined) {
+      data.judul = String(body.judul).trim();
+    }
+
+    if (body.isi !== undefined) {
+      data.isi = String(body.isi).trim();
+    }
+
+    if (body.aktif !== undefined) {
+      data.aktif = Boolean(body.aktif);
+    }
+
+    if (body.tanggal !== undefined) {
+      const tanggal = new Date(body.tanggal);
+
+      if (Number.isNaN(tanggal.getTime())) {
+        return jsonError("Tanggal tidak valid.", 400);
+      }
+
+      data.tanggal = tanggal;
+    }
+
+    const updated = await prisma.pengumuman.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Pengumuman berhasil diperbarui.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("PATCH_PENGUMUMAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal memperbarui pengumuman.",
+      500
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) return jsonError("Belum login.", 401);
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
+
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+
+    if (!id) {
+      return jsonError(
+        "ID pengumuman wajib diisi.",
+        400
+      );
+    }
+
+    const existing = await prisma.pengumuman.findFirst({
+      where: {
+        id,
+        rTUnitId: session.rTUnitId,
+      },
+    });
+
+    if (!existing) {
+      return jsonError(
+        "Pengumuman tidak ditemukan atau bukan milik RT Anda.",
+        404
+      );
+    }
+
+    await prisma.pengumuman.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Pengumuman berhasil dihapus.",
+    });
+  } catch (error) {
+    console.error("DELETE_PENGUMUMAN_ERROR:", error);
+
+    return jsonError(
+      "Gagal menghapus pengumuman.",
+      500
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\warga\route.ts
+==============================
+import { NextResponse } from "next/server";
+import { prisma } from "@/app/lib/prisma";
+
+import { getSession } from "@/app/lib/auth/session";
+
+function ageFromBirthDate(value: string | null | undefined) {
+  if (!value) return null;
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return null;
+
+  const now = new Date();
+
+  let age = now.getFullYear() - d.getFullYear();
+
+  const m = now.getMonth() - d.getMonth();
+
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) {
+    age--;
+  }
+
+  return age < 0 ? null : age;
+}
+
+export async function GET() {
+  const session = await getSession();
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Belum login." },
+      { status: 401 }
+    );
+  }
+
+  if (!session.rTUnitId) {
+    return NextResponse.json(
+      { error: "Akun belum memiliki RT." },
+      { status: 403 }
+    );
+  }
+
+  const rows = await prisma.warga.findMany({
+    where: {
+      rTUnitId: session.rTUnitId,
+    },
+    include: {
+      kk: true,
+    },
+    orderBy: {
+      nama: "asc",
+    },
+  });
+
+  return NextResponse.json(
+    rows.map((w) => ({
+      ...w,
+      nomorKK: w.nomorKK || w.kk?.nomorKK || "",
+      alamat: w.alamat || w.kk?.alamat || "",
+      rt: w.rt || w.kk?.rt || "",
+      rw: w.rw || w.kk?.rw || "",
+      usia: w.tanggalLahir
+        ? ageFromBirthDate(w.tanggalLahir.toISOString())
+        : w.usia,
+    }))
+  );
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const b = await req.json();
+
+    if (
+      !b.nik ||
+      !b.nama ||
+      !b.jenisKelamin ||
+      !b.hubunganKeluarga
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK, nama, jenis kelamin, dan hubungan keluarga wajib diisi.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Pastikan NIK tidak sedang dimiliki
+     * oleh RT lain.
+     */
+    const existingWarga = await prisma.warga.findUnique({
+      where: {
+        nik: b.nik,
+      },
+    });
+
+    if (
+      existingWarga &&
+      existingWarga.rTUnitId &&
+      existingWarga.rTUnitId !== session.rTUnitId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK tersebut sudah terdaftar pada RT lain dan tidak dapat diubah.",
+        },
+        { status: 409 }
+      );
+    }
+
+    let kkId: string | null = b.kkId || null;
+
+    if (b.nomorKK) {
+      const existingKK = await prisma.kK.findUnique({
+        where: {
+          nomorKK: b.nomorKK,
+        },
+      });
+
+      if (
+        existingKK &&
+        existingKK.rTUnitId &&
+        existingKK.rTUnitId !== session.rTUnitId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Nomor KK tersebut sudah terdaftar pada RT lain dan tidak dapat digunakan.",
+          },
+          { status: 409 }
+        );
+      }
+
+      const kk = await prisma.kK.upsert({
+        where: {
+          nomorKK: b.nomorKK,
+        },
+
+        update: {
+          alamat: b.alamat || undefined,
+          rt: b.rt || undefined,
+          rw: b.rw || undefined,
+          statusTinggal: b.statusTinggal || "TETAP",
+
+          kepalaKeluarga:
+            b.hubunganKeluarga === "KEPALA_KELUARGA"
+              ? b.nama
+              : undefined,
+
+          rTUnitId: session.rTUnitId,
+        },
+
+        create: {
+          nomorKK: b.nomorKK,
+          kepalaKeluarga: b.nama,
+          alamat: b.alamat || "-",
+          rt: b.rt || null,
+          rw: b.rw || null,
+          statusTinggal: b.statusTinggal || "TETAP",
+          rTUnitId: session.rTUnitId,
+        },
+      });
+
+      kkId = kk.id;
+    }
+
+    const tanggalLahir = b.tanggalLahir
+      ? new Date(b.tanggalLahir)
+      : null;
+
+    const usia = tanggalLahir
+      ? ageFromBirthDate(tanggalLahir.toISOString())
+      : b.usia
+        ? Number(b.usia)
+        : null;
+
+    const data = {
+      nama: b.nama,
+      nomorKK: b.nomorKK || null,
+      daerahKKAsal: b.daerahKKAsal || null,
+      alamat: b.alamat || null,
+      rt: b.rt || null,
+      rw: b.rw || null,
+
+      statusTinggal:
+        b.statusTinggal || "TETAP",
+
+      jenisKelamin: b.jenisKelamin,
+      hubunganKeluarga: b.hubunganKeluarga,
+
+      tempatLahir: b.tempatLahir || null,
+      tanggalLahir,
+      usia,
+
+      golonganDarah: b.golonganDarah || null,
+      agama: b.agama || null,
+      pendidikan: b.pendidikan || null,
+      pekerjaan: b.pekerjaan || null,
+      statusKawin: b.statusKawin || null,
+
+      namaIbu: b.namaIbu || null,
+      namaAyah: b.namaAyah || null,
+
+      nomorPaspor: b.nomorPaspor || null,
+
+      tanggalAkhirPaspor:
+        b.tanggalAkhirPaspor
+          ? new Date(b.tanggalAkhirPaspor)
+          : null,
+
+      hubungan: b.hubungan || null,
+      kodeHubungan: b.kodeHubungan || null,
+
+      kkId,
+
+      /*
+       * RT ditentukan SERVER dari session.
+       * Bukan dari request browser.
+       */
+      rTUnitId: session.rTUnitId,
+    };
+
+    const warga = await prisma.warga.upsert({
+      where: {
+        nik: b.nik,
+      },
+
+      update: data,
+
+      create: {
+        nik: b.nik,
+        ...data,
+      },
+    });
+
+    return NextResponse.json(
+      warga,
+      {
+        status: existingWarga ? 200 : 201,
+      }
+    );
+  } catch (e) {
+    console.error("WARGA_API_ERROR", e);
+
+    return NextResponse.json(
+      {
+        error: "Gagal menyimpan data warga.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\warga\import\route.ts
+==============================
+import { NextResponse } from "next/server";
+import {
+  StatusTinggal,
+  JenisKelamin,
+  HubunganKeluarga,
+} from "@prisma/client";
+import { prisma } from "@/app/lib/prisma";
+import { getSession } from "@/app/lib/auth/session";
+
+function clean(v: unknown) {
+  return v === undefined || v === null ? "" : String(v).trim();
+}
+
+function enumValue(v: unknown, allowed: string[], fallback: string) {
+  const value = clean(v).toUpperCase().replace(/[\s-]+/g, "_");
+  return allowed.includes(value) ? value : fallback;
+}
+
+function dateValue(v: unknown) {
+  const s = clean(v);
+  if (!s) return null;
+
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+
+  if (m) {
+    const [, a, b, y] = m;
+    const first = Number(a);
+    const second = Number(b);
+    const year = Number(y);
+
+    if (first > 31) {
+      const d = new Date(`${a}-${b}-${y}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    const d = new Date(year, second - 1, first);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function ageFromBirthDate(value: Date | null) {
+  if (!value) return null;
+
+  const now = new Date();
+  let age = now.getFullYear() - value.getFullYear();
+  const m = now.getMonth() - value.getMonth();
+
+  if (m < 0 || (m === 0 && now.getDate() < value.getDate())) {
+    age--;
+  }
+
+  return age < 0 ? null : age;
+}
+
+const allowedJK = ["LAKI_LAKI", "PEREMPUAN"];
+
+const allowedHubungan = [
+  "KEPALA_KELUARGA",
+  "ISTRI",
+  "SUAMI",
+  "ANAK",
+  "ORANG_TUA",
+  "MERTUA",
+  "LAINNYA",
+];
+
+const allowedTinggal = [
+  "TETAP",
+  "SEWA",
+  "KONTRAK",
+  "MENUMPANG",
+  "LAINNYA",
+];
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+    const rows = body?.rows;
+
+    if (!Array.isArray(rows)) {
+      return NextResponse.json(
+        { error: "Data import tidak valid." },
+        { status: 400 }
+      );
+    }
+
+    let saved = 0;
+    let kkCreated = 0;
+
+    await prisma.$transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i++) {
+        const b = rows[i] || {};
+        const nik = clean(b.nik);
+        const nama = clean(b.nama);
+        const nomorKK = clean(b.nomorKK);
+
+        if (!nik || !nama || !nomorKK) {
+          continue;
+        }
+
+        const jenisKelamin = enumValue(
+          b.jenisKelamin,
+          allowedJK,
+          "LAKI_LAKI"
+        ) as JenisKelamin;
+
+        const hubunganKeluarga = enumValue(
+          b.hubunganKeluarga,
+          allowedHubungan,
+          "LAINNYA"
+        ) as HubunganKeluarga;
+
+        const statusTinggal = enumValue(
+          b.statusTinggal,
+          allowedTinggal,
+          "TETAP"
+        ) as StatusTinggal;
+
+        const tanggalLahir = dateValue(b.tanggalLahir);
+        const tanggalAkhirPaspor = dateValue(
+          b.tanggalAkhirPaspor
+        );
+
+        const usia = tanggalLahir
+          ? ageFromBirthDate(tanggalLahir)
+          : clean(b.usia)
+            ? Number(clean(b.usia))
+            : null;
+
+        if (
+          usia !== null &&
+          (!Number.isFinite(usia) || usia < 0 || usia > 130)
+        ) {
+          throw new Error(
+            `Baris ${i + 1}: usia tidak valid untuk NIK ${nik}.`
+          );
+        }
+
+        const existingKK = await tx.kK.findUnique({
+          where: { nomorKK },
+          select: {
+            id: true,
+            rTUnitId: true,
+          },
+        });
+
+        /*
+         * KK yang sudah dimiliki RT lain tidak boleh
+         * disentuh oleh proses import RT ini.
+         */
+        if (
+          existingKK?.rTUnitId &&
+          existingKK.rTUnitId !== session.rTUnitId
+        ) {
+          throw new Error(
+            `Baris ${i + 1}: KK ${nomorKK} terdaftar pada RT lain.`
+          );
+        }
+
+        const kk = await tx.kK.upsert({
+          where: { nomorKK },
+
+          update: {
+            alamat: clean(b.alamat) || undefined,
+            rt: clean(b.rt) || undefined,
+            rw: clean(b.rw) || undefined,
+            statusTinggal,
+
+            /*
+             * Pastikan KK tetap berada pada RT login.
+             */
+            rTUnitId: session.rTUnitId,
+
+            ...(hubunganKeluarga === "KEPALA_KELUARGA"
+              ? { kepalaKeluarga: nama }
+              : {}),
+          },
+
+          create: {
+            nomorKK,
+            kepalaKeluarga: nama,
+            alamat: clean(b.alamat) || "-",
+            rt: clean(b.rt) || null,
+            rw: clean(b.rw) || null,
+            statusTinggal,
+            rTUnitId: session.rTUnitId,
+          },
+        });
+
+        if (!existingKK) {
+          kkCreated++;
+        }
+
+        const data = {
+          nama,
+          nomorKK,
+          daerahKKAsal: clean(b.daerahKKAsal) || null,
+          alamat: clean(b.alamat) || null,
+          rt: clean(b.rt) || null,
+          rw: clean(b.rw) || null,
+          statusTinggal,
+          jenisKelamin,
+          hubunganKeluarga,
+          tempatLahir: clean(b.tempatLahir) || null,
+          tanggalLahir,
+          usia,
+          golonganDarah: clean(b.golonganDarah) || null,
+          agama: clean(b.agama) || null,
+          pendidikan: clean(b.pendidikan) || null,
+          pekerjaan: clean(b.pekerjaan) || null,
+          statusKawin: clean(b.statusKawin) || null,
+          namaIbu: clean(b.namaIbu) || null,
+          namaAyah: clean(b.namaAyah) || null,
+          nomorPaspor: clean(b.nomorPaspor) || null,
+          tanggalAkhirPaspor,
+          hubungan: clean(b.hubungan) || null,
+          kodeHubungan: clean(b.kodeHubungan) || null,
+          kkId: kk.id,
+          rTUnitId: session.rTUnitId,
+        };
+
+        /*
+         * NIK sudah ada pada RT lain:
+         * jangan sampai import RT ini memindahkan atau
+         * mengubah data warga tersebut.
+         */
+        const existingWarga = await tx.warga.findUnique({
+          where: { nik },
+          select: {
+            id: true,
+            rTUnitId: true,
+          },
+        });
+
+        if (
+          existingWarga?.rTUnitId &&
+          existingWarga.rTUnitId !== session.rTUnitId
+        ) {
+          throw new Error(
+            `Baris ${i + 1}: NIK ${nik} terdaftar pada RT lain.`
+          );
+        }
+
+        await tx.warga.upsert({
+          where: { nik },
+          update: data,
+          create: {
+            nik,
+            ...data,
+          },
+        });
+
+        saved++;
+      }
+    });
+
+    return NextResponse.json({
+      ok: true,
+      saved,
+      kkCreated,
+      message: `${saved} warga berhasil disimpan ke database.`,
+    });
+  } catch (e: any) {
+    console.error("IMPORT_WARGA_ERROR:", e);
+
+    const detail =
+      process.env.NODE_ENV === "development"
+        ? String(e?.message || e)
+        : "Terjadi kesalahan saat menyimpan data.";
+
+    return NextResponse.json(
+      {
+        error: "Import gagal disimpan ke database.",
+        detail,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+==============================
+FILE: C:\rt11-digital-v1\app\api\warga\import-preview\route.ts
+==============================
+import { NextResponse } from "next/server";
+import * as XLSX from "xlsx";
+
+const s = (v: unknown) => v == null ? "" : String(v).trim();
+
+function date(v: unknown) {
+  if (!v) return "";
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0,10);
+  const n = Number(v);
+  if (!Number.isNaN(n) && n > 20000 && n < 70000)
+    return new Date(Math.round((n - 25569) * 86400 * 1000)).toISOString().slice(0,10);
+  const d = new Date(s(v));
+  return Number.isNaN(d.getTime()) ? s(v) : d.toISOString().slice(0,10);
+}
+
+function ageFromBirthDate(value: string) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age < 0 ? "" : String(age);
+}
+
+function jk(v: string) {
+  const x=v.toLowerCase();
+  return x.includes("perempuan") || x === "p" ? "PEREMPUAN" : "LAKI_LAKI";
+}
+function hb(v: string) {
+  const x=v.toLowerCase();
+  if(x.includes("kepala"))return "KEPALA_KELUARGA";
+  if(x.includes("istri"))return "ISTRI";
+  if(x.includes("suami"))return "SUAMI";
+  if(x.includes("anak"))return "ANAK";
+  if(x.includes("mertua"))return "MERTUA";
+  if(x.includes("orang tua")||x.includes("ibu")||x.includes("ayah"))return "ORANG_TUA";
+  return "LAINNYA";
+}
+function statusTinggal(v: string) {
+  const x=v.toLowerCase();
+  if(x.includes("kontrak"))return "KONTRAK";
+  if(x.includes("sewa"))return "SEWA";
+  if(x.includes("numpang"))return "MENUMPANG";
+  return "TETAP";
+}
+function pick(r: Record<string, unknown>, keys: string[]) {
+  for(const k of keys){const v=s(r[k]);if(v)return v;}
+  return "";
+}
+
+export async function POST(req: Request) {
+  try {
+    const f=(await req.formData()).get("file");
+    if(!(f instanceof File))return NextResponse.json({error:"File Excel tidak ditemukan."},{status:400});
+
+    const wb=XLSX.read(Buffer.from(await f.arrayBuffer()),{type:"buffer",cellDates:true});
+    const name=wb.SheetNames.find(x=>x.toLowerCase().includes("data kependudukan"))||wb.SheetNames[0];
+    const rows=XLSX.utils.sheet_to_json<Record<string,unknown>>(wb.Sheets[name],{range:3,defval:""});
+
+    let currentKK="";
+    const out:any[]=[];
+    const errors:string[]=[];
+
+    rows.forEach((r,i)=>{
+      const nkk=pick(r,["No KK","no_kk","NO KK"]);
+      if(nkk)currentKK=nkk;
+      const nik=pick(r,["NIK","nik"]);
+      const nama=pick(r,["Nama Lengkap","nama_lgkp","Nama"]);
+      if(!nik&&!nama)return;
+      if(!currentKK)errors.push(`Baris ${i+4}: No KK belum ditemukan.`);
+      if(!nik){errors.push(`Baris ${i+4}: NIK kosong.`);return;}
+      if(!nama){errors.push(`Baris ${i+4}: Nama kosong.`);return;}
+
+      const tanggalLahir=date(pick(r,["Tanggal Lahir","tgl_lhr"]));
+      const usiaExcel=pick(r,["Usia","usia"]);
+      const daerahKKAsal=pick(r,[
+        "Kartu Keluarga Asal","Daerah KK Asal","Wilayah KK Asal",
+        "KK Asal","No KK Asal","no_kk_asal",
+        "Kartu Keluarga Asal / No KK Asal"
+      ]);
+
+      out.push({
+        nomorKK:currentKK,
+        daerahKKAsal,
+        statusTinggal:statusTinggal(pick(r,["Status Tinggal","status_tinggal","Status Domisili","status_domisili"])),
+        alamat:pick(r,["Alamat","alamat"]),
+        rw:pick(r,["RW","no_rw"]), rt:pick(r,["RT","no_rt"]),
+        nik,nama,
+        hubunganKeluarga:hb(pick(r,["Status Hubungan Keluarga","stat_hbkel"])),
+        jenisKelamin:jk(pick(r,["Jenis Kelamin","jenis_klmin"])),
+        tempatLahir:pick(r,["Tempat Lahir","tmpt_lhr"]),
+        tanggalLahir,
+        usia:usiaExcel||ageFromBirthDate(tanggalLahir),
+        golonganDarah:pick(r,["Golongan Darah","gol_drh"]),
+        agama:pick(r,["Agama","agama"]),
+        pendidikan:pick(r,["Pendidikan Terakhir","pddk_akh","Pendidikan","Sekolah"]),
+        pekerjaan:pick(r,["Jenis Pekerjaan","jenis_pkrjn","Pekerjaan"]),
+        statusKawin:pick(r,["Status Perkawinan","stat_kwn"]),
+        namaIbu:pick(r,["Nama Ibu","nama_lgkp_ibu"]),
+        namaAyah:pick(r,["Nama Ayah","nama_lgkp_ayah"]),
+        nomorPaspor:pick(r,["No. Paspor","no_paspor"]),
+        tanggalAkhirPaspor:date(pick(r,["Tanggal Akhir Paspor","tgl_akh_paspor"])),
+        hubungan:pick(r,["Hubungan","hb"]),
+        kodeHubungan:pick(r,["Kode Hubungan","Kode hb","kode_hubungan"])
+      });
+    });
+
+    return NextResponse.json({sheet:name,total:out.length,errors,rows:out});
+  } catch(e) {
+    console.error(e);
+    return NextResponse.json({error:"File Excel tidak dapat dibaca."},{status:500});
+  }
+}

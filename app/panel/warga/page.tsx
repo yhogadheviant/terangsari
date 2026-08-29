@@ -1,0 +1,548 @@
+﻿"use client";
+
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import RtInfo from "../../ui/rt-info";
+
+const initial = {
+  nik:"", nama:"", nomorKK:"", daerahKKAsal:"", alamat:"", rt:"", rw:"",
+  statusTinggal:"TETAP", hubunganKeluarga:"KEPALA_KELUARGA", jenisKelamin:"LAKI_LAKI",
+  tempatLahir:"", tanggalLahir:"", usia:"", golonganDarah:"", agama:"ISLAM", pendidikan:"",
+  pekerjaan:"", statusKawin:"", namaIbu:"", namaAyah:"", nomorPaspor:"",
+  tanggalAkhirPaspor:"", hubungan:"", kodeHubungan:""
+};
+
+const cols: [string,string][] = [
+  ["nik","NIK"],["nama","Nama Lengkap"],["nomorKK","No. KK"],
+  ["statusTinggal","Status Tinggal"],["hubunganKeluarga","Hubungan Keluarga"],
+  ["jenisKelamin","Jenis Kelamin"],["alamat","Alamat"],["rt","RT"],["rw","RW"],
+  ["tempatLahir","Tempat Lahir"],["tanggalLahir","Tanggal Lahir"],["usia","Usia"],
+  ["golonganDarah","Gol. Darah"],["agama","Agama"],["pendidikan","Pendidikan"],
+  ["pekerjaan","Pekerjaan"],["statusKawin","Status Perkawinan"],["namaIbu","Nama Ibu"],
+  ["namaAyah","Nama Ayah"],["nomorPaspor","No. Paspor"],["tanggalAkhirPaspor","Akhir Paspor"],
+  ["hubungan","Hubungan"],["kodeHubungan","Kode Hubungan"],["daerahKKAsal","Daerah KK Asal"]
+];
+
+const requiredQuality = [
+  ["nik","NIK"],["nama","Nama"],["nomorKK","No. KK"],["alamat","Alamat"],
+  ["tempatLahir","Tempat Lahir"],["tanggalLahir","Tanggal Lahir"],["agama","Agama"],
+  ["pendidikan","Pendidikan"],["pekerjaan","Pekerjaan"],["statusKawin","Status Perkawinan"]
+];
+
+const tinggal = [
+  ["TETAP","Tetap"],["SEWA","Sewa"],["KONTRAK","Kontrak"],["MENUMPANG","Menumpang"],["LAINNYA","Lainnya"]
+];
+const hubungan = [
+  ["KEPALA_KELUARGA","Kepala Keluarga"],["ISTRI","Istri"],["SUAMI","Suami"],
+  ["ANAK","Anak"],["ORANG_TUA","Orang Tua"],["MERTUA","Mertua"],["LAINNYA","Lainnya"]
+];
+const pendidikan = [
+  ["TIDAK_SEKOLAH","Tidak sekolah"],["SD","SD"],["SLTP","SLTP"],["SLTA","SLTA"],
+  ["D1","D1"],["D2","D2"],["D3","D3"],["D4","D4"],["S1","S1"],["S2","S2"],["S3","S3"],["LAINNYA","Lainnya"]
+];
+const agama = [
+  ["ISLAM","Islam"],["KRISTEN","Kristen"],["KATOLIK","Katolik"],
+  ["HINDU","Hindu"],["BUDDHA","Buddha"],["KONGHUCU","Konghucu"],["LAINNYA","Lainnya"]
+];
+const kawin = [
+  ["BELUM","Belum kawin"],["KAWIN","Kawin"],["CERAI_HIDUP","Cerai hidup"],["CERAI_MATI","Cerai mati"]
+];
+
+const TABLE_MIN_WIDTH = 3200;
+const NIK_W = 150;
+const NAMA_W = 260;
+const KK_W = 175;
+
+export default function Page() {
+  const [data,setData] = useState<any[]>([]);
+  const [q,setQ] = useState("");
+  const [form,setForm] = useState(initial);
+  const [show,setShow] = useState(false);
+  const [file,setFile] = useState<File|null>(null);
+  const [preview,setPreview] = useState<any[]>([]);
+  const [errors,setErrors] = useState<string[]>([]);
+  const [msg,setMsg] = useState("");
+  const [busy,setBusy] = useState(false);
+
+  const previewTop = useRef<HTMLDivElement>(null);
+  const previewBody = useRef<HTMLDivElement>(null);
+  const previewLeft = useRef<HTMLDivElement>(null);
+  const previewLeftInner = useRef<HTMLDivElement>(null);
+
+  const listTop = useRef<HTMLDivElement>(null);
+  const listBody = useRef<HTMLDivElement>(null);
+  const listLeft = useRef<HTMLDivElement>(null);
+  const listLeftInner = useRef<HTMLDivElement>(null);
+
+  async function load() {
+    const r = await fetch("/api/warga", { cache:"no-store" });
+    if (r.ok) setData(await r.json());
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const filtered = useMemo(
+    () => data.filter(x =>
+      `${x.nik} ${x.nama} ${x.nomorKK} ${x.daerahKKAsal||""}`
+        .toLowerCase().includes(q.toLowerCase())
+    ),
+    [data,q]
+  );
+
+  const set = (k:string,v:string) => setForm(x=>({...x,[k]:v}));
+
+  function age(v:string) {
+    const d = new Date(v);
+    if (!v || Number.isNaN(d.getTime())) return "";
+    const n = new Date();
+    let a = n.getFullYear() - d.getFullYear();
+    const m = n.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && n.getDate() < d.getDate())) a--;
+    return String(Math.max(0,a));
+  }
+
+  function completeness() {
+    return requiredQuality.map(([key,label]) => ({
+      key,label,
+      count: preview.filter(x => x[key]!=null && String(x[key]).trim()!=="").length,
+      total: preview.length
+    }));
+  }
+
+  async function save(e:FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const r = await fetch("/api/warga", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(form)
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setMsg(j.error||"Gagal menyimpan.");
+    setMsg("Data warga berhasil disimpan.");
+    setForm(initial);
+    setShow(false);
+    load();
+  }
+
+  async function previewExcel() {
+    if (!file) return setMsg("Pilih file Excel terlebih dahulu.");
+    setBusy(true);
+    const f = new FormData();
+    f.append("file",file);
+    const r = await fetch("/api/warga/import-preview",{method:"POST",body:f});
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setMsg(j.error||"Gagal membaca Excel.");
+    setPreview(j.rows||[]);
+    setErrors(j.errors||[]);
+    setMsg(`Preview ${j.total} warga dari sheet "${j.sheet}".`);
+  }
+
+  async function importRows() {
+    if (!preview.length) return;
+    setBusy(true);
+    const r = await fetch("/api/warga/import", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({rows:preview})
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setMsg(j.detail ? `${j.error} ${j.detail}` : (j.error||"Import gagal."));
+    setMsg(`Berhasil menyimpan ${j.saved} warga dan ${j.kkCreated} KK baru.`);
+    setPreview([]);
+    setErrors([]);
+    load();
+  }
+
+  useEffect(() => {
+    const pairs = [
+      [previewTop.current, previewBody.current],
+      [listTop.current, listBody.current],
+    ] as const;
+
+    const cleanups: (()=>void)[] = [];
+
+    for (const [top, body] of pairs) {
+      if (!top || !body) continue;
+      let syncing = false;
+      const a = () => {
+        if (syncing) return;
+        syncing = true;
+        body.scrollLeft = top.scrollLeft;
+        requestAnimationFrame(()=>{syncing=false});
+      };
+      const b = () => {
+        if (syncing) return;
+        syncing = true;
+        top.scrollLeft = body.scrollLeft;
+        requestAnimationFrame(()=>{syncing=false});
+      };
+      top.addEventListener("scroll",a);
+      body.addEventListener("scroll",b);
+      cleanups.push(()=>{top.removeEventListener("scroll",a);body.removeEventListener("scroll",b)});
+    }
+    return () => cleanups.forEach(fn=>fn());
+  }, [preview.length, data.length]);
+
+  useEffect(() => {
+    const pairs = [
+      [previewLeft.current, previewBody.current, previewLeftInner.current],
+      [listLeft.current, listBody.current, listLeftInner.current],
+    ] as const;
+
+    const cleanups: (()=>void)[] = [];
+
+    for (const [left,body,inner] of pairs) {
+      if (!left || !body || !inner) continue;
+
+      inner.style.height = `${body.scrollHeight}px`;
+      let syncing = false;
+
+      const a = () => {
+        if (syncing) return;
+        syncing = true;
+        body.scrollTop = left.scrollTop;
+        requestAnimationFrame(()=>{syncing=false});
+      };
+      const b = () => {
+        if (syncing) return;
+        syncing = true;
+        left.scrollTop = body.scrollTop;
+        requestAnimationFrame(()=>{syncing=false});
+      };
+
+      left.addEventListener("scroll",a);
+      body.addEventListener("scroll",b);
+      cleanups.push(()=>{left.removeEventListener("scroll",a);body.removeEventListener("scroll",b)});
+    }
+
+    return () => cleanups.forEach(fn=>fn());
+  }, [preview.length, data.length, filtered.length]);
+
+  return (
+    <main className="min-h-screen bg-slate-50 p-4 md:p-8">
+      <style>{`
+        .rt11-table-wrap { position:relative; }
+        .rt11-top-scroll {
+          height:18px; overflow-x:auto; overflow-y:hidden;
+          border:1px solid #dbe3ef; border-bottom:0;
+          border-radius:12px 12px 0 0; background:#f8fafc;
+        }
+        .rt11-top-inner { height:1px; min-width:${TABLE_MIN_WIDTH}px; }
+        .rt11-left-scroll {
+          position:absolute; left:-18px; top:18px; width:16px;
+          height:calc(100% - 18px); overflow-y:auto; overflow-x:hidden;
+          background:#f8fafc; border:1px solid #dbe3ef; border-right:0;
+          border-radius:10px 0 0 10px;
+        }
+        .rt11-left-inner { width:1px; }
+        .rt11-body-scroll {
+          width:100%; max-height:600px; overflow:auto;
+          border:1px solid #dbe3ef; border-radius:0 0 12px 12px;
+        }
+        .rt11-table { min-width:${TABLE_MIN_WIDTH}px; width:max-content; border-collapse:separate; border-spacing:0; }
+        .rt11-table th, .rt11-table td { border-right:1px solid #edf1f6; }
+        .rt11-table thead th { position:sticky; top:0; z-index:20; background:#f8fafc; }
+        .rt11-sticky-nik { position:sticky !important; left:0; z-index:31 !important; min-width:${NIK_W}px; width:${NIK_W}px; background:white !important; }
+        .rt11-sticky-nama { position:sticky !important; left:${NIK_W}px; z-index:30 !important; min-width:${NAMA_W}px; width:${NAMA_W}px; background:white !important; }
+        .rt11-sticky-kk { position:sticky !important; left:${NIK_W+NAMA_W}px; z-index:29 !important; min-width:${KK_W}px; width:${KK_W}px; background:white !important; box-shadow:5px 0 8px -8px rgba(0,0,0,.45); }
+        .rt11-table thead .rt11-sticky-nik { z-index:41 !important; background:#f8fafc !important; }
+        .rt11-table thead .rt11-sticky-nama { z-index:40 !important; background:#f8fafc !important; }
+        .rt11-table thead .rt11-sticky-kk { z-index:39 !important; background:#f8fafc !important; }
+        .rt11-table tbody tr:hover .rt11-sticky-nik,
+        .rt11-table tbody tr:hover .rt11-sticky-nama,
+        .rt11-table tbody tr:hover .rt11-sticky-kk { background:#eff6ff !important; }
+        .rt11-scroll-note { font-size:11px; color:#64748b; margin:6px 0 8px; }
+        @media(max-width:768px) {
+          .rt11-left-scroll { left:-14px; width:12px; }
+          .rt11-body-scroll { max-height:560px; }
+        }
+      `}</style>
+
+      <div className="max-w-[1500px] mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-black">Data Warga</h1>
+            <p className="text-sm text-slate-500">Database kependudukan <RtInfo mode="short" /></p>
+          </div>
+          <a href="/panel" className="text-blue-600 font-bold text-sm"> Kembali</a>
+        </div>
+
+        {msg && <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm">{msg}</div>}
+
+        <div className="grid md:grid-cols-2 gap-4 mb-5">
+          <div className="bg-white border rounded-2xl p-5">
+            <div className="text-2xl">‘¤</div>
+            <h2 className="font-black mt-2">Input Data Warga</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-4">Form lengkap sesuai database kependudukan <RtInfo mode="short" />.</p>
+            <button onClick={()=>setShow(!show)} className="bg-blue-600 text-white rounded-xl px-5 py-3 font-bold">
+              {show?"Tutup Form":"+ Tambah Warga"}
+            </button>
+          </div>
+
+          <div className="bg-white border rounded-2xl p-5">
+            <div className="text-2xl">“¥</div>
+            <h2 className="font-black mt-2">Import Excel</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">Daerah asal KK dicatat sebagai nama daerah, bukan nomor KK.</p>
+            <div className="flex gap-2">
+              <input type="file" accept=".xlsx,.xls" onChange={e=>setFile(e.target.files?.[0]||null)}
+                className="border rounded-xl p-2 text-xs flex-1 min-w-0"/>
+              <button onClick={previewExcel} disabled={busy} className="bg-blue-600 text-white rounded-xl px-4 font-bold">
+                Preview Excel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {show && (
+          <form onSubmit={save} className="bg-white border rounded-2xl p-5 mb-5">
+            <h2 className="text-lg font-black mb-5">Form Lengkap Data Warga</h2>
+
+            <Group title="1. Identitas & KK">
+              <div className="grid md:grid-cols-3 gap-3">
+                <Field label="NIK *" value={form.nik} onChange={v=>set("nik",v)} required/>
+                <Field label="No. KK" value={form.nomorKK} onChange={v=>set("nomorKK",v)}/>
+                <Field label="Daerah KK Asal" value={form.daerahKKAsal} onChange={v=>set("daerahKKAsal",v)} placeholder="Contoh: Karawang, Jawa Barat"/>
+                <Field label="Nama Lengkap *" value={form.nama} onChange={v=>set("nama",v)} required/>
+                <Select label="Status Hubungan Keluarga *" value={form.hubunganKeluarga} onChange={v=>set("hubunganKeluarga",v)} options={hubungan}/>
+                <Select label="Jenis Kelamin *" value={form.jenisKelamin} onChange={v=>set("jenisKelamin",v)} options={[["LAKI_LAKI","Laki-laki"],["PEREMPUAN","Perempuan"]]}/>
+                <Select label="Status Tinggal" value={form.statusTinggal} onChange={v=>set("statusTinggal",v)} options={tinggal}/>
+                <Field label="Alamat" value={form.alamat} onChange={v=>set("alamat",v)}/>
+                <Field label="RT" value={form.rt} onChange={v=>set("rt",v)}/>
+                <Field label="RW" value={form.rw} onChange={v=>set("rw",v)}/>
+              </div>
+            </Group>
+
+            <Group title="2. Kelahiran">
+              <div className="grid md:grid-cols-4 gap-3">
+                <Field label="Tempat Lahir" value={form.tempatLahir} onChange={v=>set("tempatLahir",v)}/>
+                <Field label="Tanggal Lahir" type="date" value={form.tanggalLahir}
+                  onChange={v=>setForm(x=>({...x,tanggalLahir:v,usia:age(v)}))}/>
+                <Field label="Usia (otomatis)" value={form.usia} onChange={()=>{}} readOnly/>
+                <Field label="Golongan Darah" value={form.golonganDarah} onChange={v=>set("golonganDarah",v)} placeholder="A / B / AB / O"/>
+              </div>
+            </Group>
+
+            <Group title="3. Pendidikan, Agama & Pekerjaan">
+              <div className="grid md:grid-cols-4 gap-3">
+                <Select label="Agama" value={form.agama} onChange={v=>set("agama",v)} options={agama}/>
+                <Select label="Pendidikan / Sekolah Terakhir" value={form.pendidikan} onChange={v=>set("pendidikan",v)} options={pendidikan}/>
+                <Field label="Jenis Pekerjaan" value={form.pekerjaan} onChange={v=>set("pekerjaan",v)}/>
+                <Select label="Status Perkawinan" value={form.statusKawin} onChange={v=>set("statusKawin",v)} options={kawin}/>
+              </div>
+            </Group>
+
+            <Group title="4. Orang Tua">
+              <div className="grid md:grid-cols-2 gap-3">
+                <Field label="Nama Ibu" value={form.namaIbu} onChange={v=>set("namaIbu",v)}/>
+                <Field label="Nama Ayah" value={form.namaAyah} onChange={v=>set("namaAyah",v)}/>
+              </div>
+            </Group>
+
+            <Group title="5. Dokumen & Data Hubungan">
+              <div className="grid md:grid-cols-4 gap-3">
+                <Field label="No. Paspor" value={form.nomorPaspor} onChange={v=>set("nomorPaspor",v)}/>
+                <Field label="Tanggal Akhir Paspor" type="date" value={form.tanggalAkhirPaspor} onChange={v=>set("tanggalAkhirPaspor",v)}/>
+                <Field label="Hubungan" value={form.hubungan} onChange={v=>set("hubungan",v)}/>
+                <Field label="Kode Hubungan" value={form.kodeHubungan} onChange={v=>set("kodeHubungan",v)}/>
+              </div>
+            </Group>
+
+            <button disabled={busy} className="bg-blue-600 text-white rounded-xl px-6 py-3 font-bold">
+              {busy?"Menyimpan...":"OK Simpan Data Warga"}
+            </button>
+          </form>
+        )}
+
+        {preview.length>0 && (
+          <section className="bg-white border rounded-2xl p-5 mb-5">
+            <div className="flex flex-col md:flex-row justify-between gap-3 items-start md:items-center">
+              <div>
+                <h2 className="font-black text-lg">Preview Import Lengkap</h2>
+                <p className="text-xs text-slate-500">{preview.length} warga ¢ {cols.length} kolom</p>
+              </div>
+              <button onClick={importRows} disabled={busy} className="bg-emerald-600 text-white rounded-xl px-5 py-3 font-bold">
+                OK Simpan ke Database
+              </button>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-4">
+              {completeness().map(x=>(
+                <div key={x.key} className={`rounded-xl border p-3 ${x.count===x.total?"bg-emerald-50 border-emerald-200":"bg-amber-50 border-amber-200"}`}>
+                  <div className="text-xs font-bold">{x.count===x.total?"OK":"PERINGATAN"} {x.label}</div>
+                  <div className="text-sm font-black mt-1">{x.count}/{x.total}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rt11-scroll-note">
+              • Scroll vertikal juga tersedia di kiri. ” Gunakan scrollbar atas untuk geser ke kanan.
+              <b> NIK, Nama Lengkap, dan No. KK tetap menempel.</b>
+            </div>
+
+            <TableScroller
+              topRef={previewTop}
+              bodyRef={previewBody}
+              leftRef={previewLeft}
+              leftInnerRef={previewLeftInner}
+            >
+              <table className="rt11-table text-xs">
+                <thead>
+                  <tr>
+                    {cols.map(([key,label],i)=>(
+                      <th key={key} className={`p-2 text-left whitespace-nowrap border-b font-bold ${
+                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":i===2?"rt11-sticky-kk":""
+                      }`}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.map((x,i)=>(
+                    <tr key={`${x.nik}-${i}`} className="border-b hover:bg-slate-50">
+                      {cols.map(([key],j)=>(
+                        <td key={key} className={`p-2 whitespace-nowrap ${
+                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":j===2?"rt11-sticky-kk":""
+                        }`}>
+                          {x[key]==null || String(x[key]).trim()==="" ? "-" : String(x[key])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroller>
+
+            {errors.length>0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-xs">
+                <div className="font-bold mb-1">Catatan validasi:</div>
+                {errors.map(x=><div key={x}>¢ {x}</div>)}
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="bg-white border rounded-2xl overflow-hidden">
+          <div className="p-5 flex flex-col md:flex-row justify-between gap-3">
+            <div>
+              <h2 className="font-black">Daftar Warga</h2>
+              <p className="text-xs text-slate-500">{data.length} data tersimpan</p>
+            </div>
+            <input value={q} onChange={e=>setQ(e.target.value)}
+              placeholder="Cari NIK, nama, No KK, daerah KK asal..."
+              className="border rounded-xl p-3 w-full md:w-80"/>
+          </div>
+
+          <div className="px-5 pb-5">
+            <div className="rt11-scroll-note">
+              • Scroll vertikal di kiri &nbsp;¢&nbsp; ” Scroll horizontal di atas
+              &nbsp;¢&nbsp; <b>NIK, Nama Lengkap, No. KK sticky</b>
+            </div>
+
+            <TableScroller
+              topRef={listTop}
+              bodyRef={listBody}
+              leftRef={listLeft}
+              leftInnerRef={listLeftInner}
+            >
+              <table className="rt11-table text-sm">
+                <thead>
+                  <tr>
+                    {cols.map(([key,label],i)=>(
+                      <th key={key} className={`p-3 text-left whitespace-nowrap ${
+                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":i===2?"rt11-sticky-kk":""
+                      }`}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(x=>(
+                    <tr key={x.id} className="border-t">
+                      {cols.map(([key],j)=>{
+                        let v=x[key];
+                        if(key==="tanggalLahir" || key==="tanggalAkhirPaspor")
+                          v=v ? new Date(v).toLocaleDateString("id-ID") : "";
+                        return <td key={key} className={`p-3 whitespace-nowrap ${
+                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":j===2?"rt11-sticky-kk":""
+                        }`}>{v || "-"}</td>;
+                      })}
+                    </tr>
+                  ))}
+                  {!filtered.length && (
+                    <tr><td colSpan={cols.length} className="p-8 text-center text-slate-400">Belum ada data warga.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </TableScroller>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function TableScroller({
+  topRef, bodyRef, leftRef, leftInnerRef, children
+}:{
+  topRef:React.RefObject<HTMLDivElement|null>;
+  bodyRef:React.RefObject<HTMLDivElement|null>;
+  leftRef:React.RefObject<HTMLDivElement|null>;
+  leftInnerRef:React.RefObject<HTMLDivElement|null>;
+  children:ReactNode;
+}) {
+  return (
+    <div className="rt11-table-wrap">
+      <div ref={topRef} className="rt11-top-scroll" aria-label="Scroll horizontal">
+        <div className="rt11-top-inner" />
+      </div>
+
+      <div ref={leftRef} className="rt11-left-scroll" aria-label="Scroll vertikal kiri">
+        <div ref={leftInnerRef} className="rt11-left-inner" />
+      </div>
+
+      <div ref={bodyRef} className="rt11-body-scroll">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Group({title,children}:{title:string;children:ReactNode}) {
+  return <div className="mb-6"><h3 className="font-bold text-sm mb-3">{title}</h3>{children}</div>;
+}
+
+function Field({
+  label,value,onChange,type="text",placeholder="",required=false,readOnly=false
+}:{
+  label:string;value:string;onChange:(v:string)=>void;type?:string;placeholder?:string;required?:boolean;readOnly?:boolean
+}) {
+  return <label className="block">
+    <span className="block text-xs font-bold text-slate-600 mb-1">{label}</span>
+    <input type={type} required={required} readOnly={readOnly} value={value} placeholder={placeholder}
+      onChange={e=>onChange(e.target.value)}
+      className={`w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm ${readOnly?"bg-slate-50":""}`}/>
+  </label>;
+}
+
+function Select({
+  label,value,onChange,options
+}:{
+  label:string;value:string;onChange:(v:string)=>void;options:string[][]
+}) {
+  return <label className="block">
+    <span className="block text-xs font-bold text-slate-600 mb-1">{label}</span>
+    <select value={value} onChange={e=>onChange(e.target.value)}
+      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+      <option value="">-- Pilih --</option>
+      {options.map(([v,t])=><option key={v} value={v}>{t}</option>)}
+    </select>
+  </label>;
+}
+
+
+
+
+
+
+

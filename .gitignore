@@ -1,0 +1,22 @@
+﻿node_modules/
+.next/
+.env
+.env.*
+!.env.example
+
+*.dump
+*.bak
+*.bak-*
+dev.db
+*.log
+
+.DS_Store
+Thumbs.db
+
+# Temporary migration/deployment files
+transfer-to-neon.js
+*.tsbuildinfo
+
+# Local database / migration helper SQL
+prisma/*.sql
+scripts/cek-warga-rt.cjs
