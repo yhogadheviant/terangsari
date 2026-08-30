@@ -1,6 +1,16 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import {
+  Plus,
+  Settings,
+  Users,
+  ShieldCheck,
+  Edit3,
+  Trash2,
+  Power,
+  X,
+} from "lucide-react";
 
 type RT = {
   id: string;
@@ -579,24 +589,42 @@ export default function SuperadminPage() {
   }}
 >
   <button
-    onClick={openAdd}
-    style={primaryButton}
-  >
-    + Tambah RT
-  </button>
-
-  <button
-    onClick={() =>
-      window.location.href =
-        "/panel/superadmin/pengaturan"
-    }
+  onClick={openAdd}
+  style={primaryButton}
+>
+  <span
     style={{
-      ...primaryButton,
-      background: "#475467",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "7px",
     }}
   >
-     Pengaturan Aplikasi
-  </button>
+    <Plus size={17} />
+    Tambah RT
+  </span>
+</button>
+
+  <button
+  onClick={() =>
+    window.location.href =
+      "/panel/superadmin/pengaturan"
+  }
+  style={{
+    ...primaryButton,
+    background: "#475467",
+  }}
+>
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "7px",
+    }}
+  >
+    <Settings size={17} />
+    Pengaturan Aplikasi
+  </span>
+</button>
 </div>
         </div>
 
@@ -912,7 +940,10 @@ export default function SuperadminPage() {
                               accountButton
                             }
                           >
-                            ‘¤ Kelola Akun
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+  <Users size={16} />
+  Kelola Akun
+</span>
                           </button>
 
                           <button
@@ -979,7 +1010,16 @@ export default function SuperadminPage() {
                     fontSize: "20px",
                   }}
                 >
-                  ‘¤ Akun RT{" "}
+                  <span
+  style={{
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  }}
+>
+  <Users size={20} />
+  Akun RT{" "}
+</span>
                   {selectedRT.kodeRT}/RW{" "}
                   {selectedRT.kodeRW}
                 </h2>
