@@ -95,6 +95,12 @@ export default function Panel() {
       return;
     }
 
+    // SUPERADMIN menggunakan Dashboard Multi-RT.
+    // Superadmin tidak terikat pada satu RT.
+    if (saved === "superadmin") {
+      router.replace("/panel/superadmin/dashboard");
+      return;
+    }
     setRole(saved);
     setUsername(
       localStorage.getItem("rt_username") || ""
@@ -664,6 +670,7 @@ export default function Panel() {
     </main>
   );
 }
+
 
 
 

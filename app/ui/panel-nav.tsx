@@ -7,11 +7,23 @@ export default function PanelNav() {
   const router = useRouter();
   const pathname = usePathname();
 
-  function logout() {
-    localStorage.removeItem("rt_role");
-    localStorage.removeItem("rt_username");
-    localStorage.removeItem("rt11_username");
-    router.replace("/");
+  async function logout() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("PANEL_LOGOUT_ERROR:", error);
+    } finally {
+      localStorage.removeItem("rt_role");
+      localStorage.removeItem("rt_username");
+      localStorage.removeItem("rt11_userId");
+      localStorage.removeItem("rt11_username");
+      localStorage.removeItem("rt_rtUnit");
+
+      window.location.replace("/");
+    }
   }
 
   return (
@@ -48,7 +60,7 @@ export default function PanelNav() {
         <button
           type="button"
           onClick={logout}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100"
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
         >
           <LogOut className="h-4 w-4" strokeWidth={2.2} />
           <span>Keluar</span>
@@ -57,4 +69,3 @@ export default function PanelNav() {
     </div>
   );
 }
-
