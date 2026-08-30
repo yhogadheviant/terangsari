@@ -62,6 +62,7 @@ export default function Page() {
   const [errors,setErrors] = useState<string[]>([]);
   const [msg,setMsg] = useState("");
   const [busy,setBusy] = useState(false);
+  const [editingId,setEditingId] = useState<string|null>(null);
 
   const previewTop = useRef<HTMLDivElement>(null);
   const previewBody = useRef<HTMLDivElement>(null);
@@ -111,18 +112,110 @@ export default function Page() {
   async function save(e:FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const r = await fetch("/api/warga", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(form)
-    });
-    const j = await r.json();
-    setBusy(false);
-    if (!r.ok) return setMsg(j.error||"Gagal menyimpan.");
-    setMsg("Data warga berhasil disimpan.");
-    setForm(initial);
-    setShow(false);
-    load();
+
+    try {
+      const r = await fetch("/api/warga", {
+        method: editingId ? "PUT" : "POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(
+          editingId
+            ? { ...form, id: editingId }
+            : form
+        )
+      });
+
+      const j = await r.json();
+
+      if (!r.ok) {
+        setMsg(j.error||"Gagal menyimpan.");
+        return;
+      }
+
+      setMsg(
+        editingId
+          ? "Data warga berhasil diubah."
+          : "Data warga berhasil disimpan."
+      );
+
+      setForm(initial);
+      setEditingId(null);
+      setShow(false);
+      await load();
+    } catch (error) {
+      console.error("WARGA_SAVE_ERROR:", error);
+      setMsg("Terjadi kesalahan saat menyimpan data warga.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function editWarga(row:any) {
+    const next = { ...initial };
+
+    for (const key of Object.keys(initial)) {
+      const value = row[key];
+
+      if (value === null || value === undefined) {
+        next[key as keyof typeof initial] = "";
+      } else if (
+        key === "tanggalLahir" ||
+        key === "tanggalAkhirPaspor"
+      ) {
+        next[key as keyof typeof initial] =
+          value ? String(value).slice(0,10) : "";
+      } else {
+        next[key as keyof typeof initial] = String(value);
+      }
+    }
+
+    setForm(next);
+    setEditingId(String(row.id));
+    setShow(true);
+    setMsg("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteWarga(row:any) {
+    const nama = String(row.nama || "warga");
+
+    if (
+      !window.confirm(
+        `Hapus data warga "${nama}"? Data yang dihapus tidak dapat dikembalikan.`
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const r = await fetch("/api/warga", {
+        method:"DELETE",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id: row.id })
+      });
+
+      const j = await r.json();
+
+      if (!r.ok) {
+        setMsg(j.error||"Gagal menghapus data warga.");
+        return;
+      }
+
+      if (editingId === String(row.id)) {
+        setEditingId(null);
+        setForm(initial);
+        setShow(false);
+      }
+
+      setMsg("Data warga berhasil dihapus.");
+      await load();
+    } catch (error) {
+      console.error("WARGA_DELETE_ERROR:", error);
+      setMsg("Terjadi kesalahan saat menghapus data warga.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function previewExcel() {
@@ -274,7 +367,7 @@ export default function Page() {
 
         <div className="grid md:grid-cols-2 gap-4 mb-5">
           <div className="bg-white border rounded-2xl p-5">
-            <div className="text-2xl">‘¤</div>
+            <div className="text-2xl"></div>
             <h2 className="font-black mt-2">Input Data Warga</h2>
             <p className="text-xs text-slate-500 mt-1 mb-4">Form lengkap sesuai database kependudukan <RtInfo mode="short" />.</p>
             <button onClick={()=>setShow(!show)} className="bg-blue-600 text-white rounded-xl px-5 py-3 font-bold">
@@ -283,7 +376,7 @@ export default function Page() {
           </div>
 
           <div className="bg-white border rounded-2xl p-5">
-            <div className="text-2xl">“¥</div>
+            <div className="text-2xl"></div>
             <h2 className="font-black mt-2">Import Excel</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">Daerah asal KK dicatat sebagai nama daerah, bukan nomor KK.</p>
             <div className="flex gap-2">
@@ -298,7 +391,7 @@ export default function Page() {
 
         {show && (
           <form onSubmit={save} className="bg-white border rounded-2xl p-5 mb-5">
-            <h2 className="text-lg font-black mb-5">Form Lengkap Data Warga</h2>
+            <div className="flex items-center justify-between gap-3 mb-5"><h2 className="text-lg font-black">{editingId ? "Edit Data Warga" : "Form Lengkap Data Warga"}</h2>{editingId && <button type="button" onClick={()=>{setEditingId(null);setForm(initial);setShow(false);}} className="text-sm font-bold text-slate-500 hover:text-red-600">Batal Edit</button>}</div>
 
             <Group title="1. Identitas & KK">
               <div className="grid md:grid-cols-3 gap-3">
@@ -351,7 +444,7 @@ export default function Page() {
             </Group>
 
             <button disabled={busy} className="bg-blue-600 text-white rounded-xl px-6 py-3 font-bold">
-              {busy?"Menyimpan...":"OK Simpan Data Warga"}
+              {busy ? "Menyimpan..." : editingId ? "Simpan Perubahan" : "OK Simpan Data Warga"}
             </button>
           </form>
         )}
@@ -361,7 +454,7 @@ export default function Page() {
             <div className="flex flex-col md:flex-row justify-between gap-3 items-start md:items-center">
               <div>
                 <h2 className="font-black text-lg">Preview Import Lengkap</h2>
-                <p className="text-xs text-slate-500">{preview.length} warga ¢ {cols.length} kolom</p>
+                <p className="text-xs text-slate-500">{preview.length} warga • {cols.length} kolom</p>
               </div>
               <button onClick={importRows} disabled={busy} className="bg-emerald-600 text-white rounded-xl px-5 py-3 font-bold">
                 OK Simpan ke Database
@@ -378,7 +471,7 @@ export default function Page() {
             </div>
 
             <div className="rt11-scroll-note">
-              • Scroll vertikal juga tersedia di kiri. ” Gunakan scrollbar atas untuk geser ke kanan.
+              • Scroll vertikal juga tersedia di kiri.  Gunakan scrollbar atas untuk geser ke kanan.
               <b> NIK, Nama Lengkap, dan No. KK tetap menempel.</b>
             </div>
 
@@ -417,7 +510,7 @@ export default function Page() {
             {errors.length>0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-xs">
                 <div className="font-bold mb-1">Catatan validasi:</div>
-                {errors.map(x=><div key={x}>¢ {x}</div>)}
+                {errors.map(x=><div key={x}>• {x}</div>)}
               </div>
             )}
           </section>
@@ -436,8 +529,8 @@ export default function Page() {
 
           <div className="px-5 pb-5">
             <div className="rt11-scroll-note">
-              • Scroll vertikal di kiri &nbsp;¢&nbsp; ” Scroll horizontal di atas
-              &nbsp;¢&nbsp; <b>NIK, Nama Lengkap, No. KK sticky</b>
+              • Scroll vertikal di kiri &nbsp;•&nbsp;  Scroll horizontal di atas
+              &nbsp;•&nbsp; <b>NIK, Nama Lengkap, No. KK sticky</b>
             </div>
 
             <TableScroller
@@ -454,11 +547,14 @@ export default function Page() {
                         i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":i===2?"rt11-sticky-kk":""
                       }`}>{label}</th>
                     ))}
+                    <th className="p-3 text-left whitespace-nowrap sticky right-0 z-30 bg-slate-50 border-l">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(x=>(
-                    <tr key={x.id} className="border-t">
+                    <tr key={x.id} className="border-t hover:bg-blue-50/40">
                       {cols.map(([key],j)=>{
                         let v=x[key];
                         if(key==="tanggalLahir" || key==="tanggalAkhirPaspor")
@@ -467,10 +563,32 @@ export default function Page() {
                           j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":j===2?"rt11-sticky-kk":""
                         }`}>{v || "-"}</td>;
                       })}
+
+                      <td className="p-2 sticky right-0 z-20 bg-white border-l">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={()=>editWarga(x)}
+                            disabled={busy}
+                            className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={()=>deleteWarga(x)}
+                            disabled={busy}
+                            className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {!filtered.length && (
-                    <tr><td colSpan={cols.length} className="p-8 text-center text-slate-400">Belum ada data warga.</td></tr>
+                    <tr><td colSpan={cols.length + 1} className="p-8 text-center text-slate-400">Belum ada data warga.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -539,6 +657,9 @@ function Select({
     </select>
   </label>;
 }
+
+
+
 
 
 

@@ -199,3 +199,5 @@ function Card({title,value,strong=false}:{title:string;value:number;strong?:bool
 function Mini({label,value}:{label:string;value:number}){return <div className="bg-slate-50 rounded-xl p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="font-black">{money(value)}</div></div>}
 
 
+
+

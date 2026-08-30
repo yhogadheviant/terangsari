@@ -66,6 +66,192 @@ export async function GET() {
   );
 }
 
+export async function PUT(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const b = await req.json();
+    const id = String(b.id ?? "").trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID warga wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.warga.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Data warga tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+
+    if (existing.rTUnitId !== session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Data warga bukan milik RT Anda." },
+        { status: 403 }
+      );
+    }
+
+    if (!b.nik || !b.nama || !b.jenisKelamin || !b.hubunganKeluarga) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK, nama, jenis kelamin, dan hubungan keluarga wajib diisi.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const duplicate = await prisma.warga.findFirst({
+      where: {
+        nik: b.nik,
+        NOT: { id },
+      },
+    });
+
+    if (duplicate && duplicate.rTUnitId !== session.rTUnitId) {
+      return NextResponse.json(
+        { error: "NIK tersebut terdaftar pada RT lain." },
+        { status: 409 }
+      );
+    }
+
+    const tanggalLahir = b.tanggalLahir
+      ? new Date(b.tanggalLahir)
+      : null;
+
+    const usia = tanggalLahir
+      ? ageFromBirthDate(tanggalLahir.toISOString())
+      : b.usia
+        ? Number(b.usia)
+        : null;
+
+    const updated = await prisma.warga.update({
+      where: { id },
+      data: {
+        nik: b.nik,
+        nama: b.nama,
+        nomorKK: b.nomorKK || null,
+        daerahKKAsal: b.daerahKKAsal || null,
+        alamat: b.alamat || null,
+        rt: b.rt || null,
+        rw: b.rw || null,
+        statusTinggal: b.statusTinggal || "TETAP",
+        jenisKelamin: b.jenisKelamin,
+        hubunganKeluarga: b.hubunganKeluarga,
+        tempatLahir: b.tempatLahir || null,
+        tanggalLahir,
+        usia,
+        golonganDarah: b.golonganDarah || null,
+        agama: b.agama || null,
+        pendidikan: b.pendidikan || null,
+        pekerjaan: b.pekerjaan || null,
+        statusKawin: b.statusKawin || null,
+        namaIbu: b.namaIbu || null,
+        namaAyah: b.namaAyah || null,
+        nomorPaspor: b.nomorPaspor || null,
+        tanggalAkhirPaspor: b.tanggalAkhirPaspor
+          ? new Date(b.tanggalAkhirPaspor)
+          : null,
+        hubungan: b.hubungan || null,
+        kodeHubungan: b.kodeHubungan || null,
+      },
+    });
+
+    return NextResponse.json(updated);
+  } catch (e) {
+    console.error("WARGA_PUT_ERROR", e);
+
+    return NextResponse.json(
+      { error: "Gagal mengubah data warga." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+    const id = String(body.id ?? "").trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID warga wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.warga.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Data warga tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+
+    if (existing.rTUnitId !== session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Data warga bukan milik RT Anda." },
+        { status: 403 }
+      );
+    }
+
+    await prisma.warga.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Data warga berhasil dihapus.",
+    });
+  } catch (e) {
+    console.error("WARGA_DELETE_ERROR", e);
+
+    return NextResponse.json(
+      { error: "Gagal menghapus data warga." },
+      { status: 500 }
+    );
+  }
+}
 export async function POST(req: Request) {
   try {
     const session = await getSession();
@@ -292,6 +478,9 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
+
 
 
 

@@ -10,3 +10,5 @@ export default function RootLayout({ children }: Readonly<{children: React.React
   return <html lang="id"><body>{children}</body></html>;
 }
 
+
+

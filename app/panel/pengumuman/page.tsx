@@ -314,7 +314,7 @@ export default function PengumumanPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5">
           <div>
             <div className="text-xl font-black">
-              “¢ Pengumuman
+              • Pengumuman
             </div>
 
             <div className="mt-1 text-xs text-blue-100">
@@ -560,6 +560,8 @@ export default function PengumumanPage() {
     </main>
   );
 }
+
+
 
 
 

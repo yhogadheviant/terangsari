@@ -1,4 +1,4 @@
-export type Role =
+﻿export type Role =
   | "superadmin"
   | "ketua"
   | "sekretaris"
@@ -54,3 +54,4 @@ export const permissions: Record<Role, string[]> = {
     "kegiatan",
   ],
 };
+

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { clearSession } from "@/app/lib/auth/session";
 
 export async function POST() {
@@ -21,3 +21,4 @@ export async function POST() {
     );
   }
 }
+

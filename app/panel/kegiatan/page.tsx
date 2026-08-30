@@ -330,7 +330,7 @@ export default function KegiatanPage() {
               onClick={load}
               className="rounded-xl border px-3 py-2 text-xs font-bold text-blue-600"
             >
-              ”„ Refresh
+              „ Refresh
             </button>
           </div>
 
@@ -376,14 +376,14 @@ export default function KegiatanPage() {
                       </div>
 
                       <div className="mt-2 text-sm text-slate-600">
-                        “… {formatTanggal(row.tanggal)}
+                        … {formatTanggal(row.tanggal)}
                         {row.jam &&
-                          ` ¢ ${row.jam}`}
+                          ` • ${row.jam}`}
                       </div>
 
                       {row.lokasi && (
                         <div className="mt-1 text-sm text-slate-500">
-                          “ {row.lokasi}
+                           {row.lokasi}
                         </div>
                       )}
 
@@ -424,6 +424,8 @@ export default function KegiatanPage() {
     </main>
   );
 }
+
+
 
 
 

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import type { SessionUser } from "./session";
 
 export type AppRole =
@@ -101,3 +101,4 @@ export function requireRtSession(
 
   return null;
 }
+

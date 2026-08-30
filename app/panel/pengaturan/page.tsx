@@ -252,7 +252,7 @@ export default function PengaturanPage() {
           <div className="space-y-6">
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-black text-slate-900">
-                ‘¤ Akun Saya
+                 Akun Saya
               </h2>
 
               <div className="mt-5 space-y-4">
@@ -279,7 +279,7 @@ export default function PengaturanPage() {
 
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-black text-slate-900">
-                ” Keamanan
+                 Keamanan
               </h2>
 
               <div className="mt-4 rounded-2xl bg-emerald-50 p-4">
@@ -355,4 +355,6 @@ function Info({
     </div>
   );
 }
+
+
 

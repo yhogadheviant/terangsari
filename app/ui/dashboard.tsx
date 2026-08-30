@@ -113,8 +113,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-blue-700 text-white">
-        <div className="mx-auto max-w-6xl px-4 py-6">
+      <header className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-700 to-blue-900 text-white">
+        <div className="relative mx-auto max-w-6xl px-4 py-7 sm:py-9">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-2xl font-black">
@@ -129,14 +129,14 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => router.push("/login")}
-              className="flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-blue-700 shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-blue-50 active:scale-95"
             >
               <LogIn className="h-4 w-4" strokeWidth={2.2} />
               <span>Login</span>
             </button>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-8">
             <div className="text-sm text-blue-100">
               Portal Digital Warga
             </div>
@@ -194,10 +194,10 @@ export default function Dashboard() {
                   key={item.title}
                   type="button"
                   onClick={() => openMenu(item)}
-                  className="block rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md active:scale-[0.98]"
+                 className="group relative block overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white group-hover:shadow-md group-hover:shadow-blue-200">
                       <Icon className="h-6 w-6" strokeWidth={2.2} />
                     </div>
 
@@ -228,7 +228,7 @@ export default function Dashboard() {
         </section>
 
         <section className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="group rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
             <h2 className="flex items-center gap-2 font-black">
               <Megaphone className="h-5 w-5 text-blue-600" strokeWidth={2.2} />
               <span>Pengumuman Terbaru</span>
@@ -239,7 +239,7 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="group rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
             <h2 className="flex items-center gap-2 font-black">
               <CalendarDays className="h-5 w-5 text-blue-600" strokeWidth={2.2} />
               <span>Kegiatan Terdekat</span>
@@ -259,3 +259,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+

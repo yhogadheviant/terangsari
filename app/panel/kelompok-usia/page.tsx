@@ -84,7 +84,7 @@ export default function KelompokUsiaPage(){
       {selected && <section className="bg-white border rounded-2xl overflow-hidden">
         <div className="p-5 border-b flex flex-col md:flex-row justify-between gap-3">
           <div><h2 className="font-black text-lg">{selected.label}</h2>
-            <p className="text-xs text-slate-500">{selected.total} warga ¢ Laki-laki {selected.lakiLaki} ¢ Perempuan {selected.perempuan}</p></div>
+            <p className="text-xs text-slate-500">{selected.total} warga • Laki-laki {selected.lakiLaki} • Perempuan {selected.perempuan}</p></div>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari NIK / nama..."
             className="border rounded-xl px-3 py-2.5 w-full md:w-72"/>
         </div>
@@ -116,6 +116,8 @@ export default function KelompokUsiaPage(){
 function Stat({label,value}:{label:string;value:number}){
   return <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-black mt-1">{value}</div></div>
 }
+
+
 
 
 

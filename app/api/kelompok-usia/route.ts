@@ -3,14 +3,14 @@ import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
 
 const groups = [
-  { key: "0-5", label: "0“5 Tahun", min: 0, max: 5 },
-  { key: "6-12", label: "6“12 Tahun", min: 6, max: 12 },
-  { key: "13-17", label: "13“17 Tahun", min: 13, max: 17 },
-  { key: "18-25", label: "18“25 Tahun", min: 18, max: 25 },
-  { key: "26-35", label: "26“35 Tahun", min: 26, max: 35 },
-  { key: "36-45", label: "36“45 Tahun", min: 36, max: 45 },
-  { key: "46-55", label: "46“55 Tahun", min: 46, max: 55 },
-  { key: "56-65", label: "56“65 Tahun", min: 56, max: 65 },
+  { key: "0-5", label: "05 Tahun", min: 0, max: 5 },
+  { key: "6-12", label: "612 Tahun", min: 6, max: 12 },
+  { key: "13-17", label: "1317 Tahun", min: 13, max: 17 },
+  { key: "18-25", label: "1825 Tahun", min: 18, max: 25 },
+  { key: "26-35", label: "2635 Tahun", min: 26, max: 35 },
+  { key: "36-45", label: "3645 Tahun", min: 36, max: 45 },
+  { key: "46-55", label: "4655 Tahun", min: 46, max: 55 },
+  { key: "56-65", label: "5665 Tahun", min: 56, max: 65 },
   { key: "65+", label: "65+ Tahun", min: 66, max: 999 },
 ];
 
@@ -59,7 +59,7 @@ export async function GET() {
     }
 
     // ==========================================
-    // DATA WARGA ” HANYA RT YANG LOGIN
+    // DATA WARGA  HANYA RT YANG LOGIN
     // ==========================================
     const warga = await prisma.warga.findMany({
       where: {
@@ -156,3 +156,5 @@ export async function GET() {
     );
   }
 }
+
+
