@@ -315,31 +315,31 @@ export default function Page() {
   }, [preview.length, data.length, filtered.length]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-8">
+    <main className="min-h-screen bg-slate-50 px-3 py-4 sm:p-4 md:p-8">
       <style>{`
         .rt11-table-wrap { position:relative; }
         .rt11-top-scroll {
-          height:18px; overflow-x:auto; overflow-y:hidden;
+          height:0; overflow:hidden;
           border:1px solid #dbe3ef; border-bottom:0;
           border-radius:12px 12px 0 0; background:#f8fafc;
         }
         .rt11-top-inner { height:1px; min-width:${TABLE_MIN_WIDTH}px; }
         .rt11-left-scroll {
-          position:absolute; left:-18px; top:18px; width:16px;
-          height:calc(100% - 18px); overflow-y:auto; overflow-x:hidden;
+          position:absolute; left:-18px; top:0; width:16px;
+          height:100%; overflow-y:auto; overflow-x:hidden;
           background:#f8fafc; border:1px solid #dbe3ef; border-right:0;
           border-radius:10px 0 0 10px;
         }
         .rt11-left-inner { width:1px; }
         .rt11-body-scroll {
-          width:100%; max-height:600px; overflow:auto;
+          width:100%; max-height:600px; overflow-x:auto; overflow-y:auto;
           border:1px solid #dbe3ef; border-radius:0 0 12px 12px;
         }
         .rt11-table { min-width:${TABLE_MIN_WIDTH}px; width:max-content; border-collapse:separate; border-spacing:0; }
         .rt11-table th, .rt11-table td { border-right:1px solid #edf1f6; }
         .rt11-table thead th { position:sticky; top:0; z-index:20; background:#f8fafc; }
-        .rt11-sticky-nik { position:sticky !important; left:0; z-index:31 !important; min-width:${NIK_W}px; width:${NIK_W}px; background:white !important; }
-        .rt11-sticky-nama { position:sticky !important; left:${NIK_W}px; z-index:30 !important; min-width:${NAMA_W}px; width:${NAMA_W}px; background:white !important; }
+        .rt11-sticky-nik { position:sticky !important; left:0; z-index:31 !important; min-width:${NIK_W}px; width:${NIK_W}px; background:white !important; overflow:hidden; }
+        .rt11-sticky-nama { position:sticky !important; left:${NIK_W}px; z-index:40 !important; min-width:${NAMA_W}px; width:${NAMA_W}px; background:white !important; overflow:hidden; }
         .rt11-sticky-kk { position:sticky !important; left:${NIK_W+NAMA_W}px; z-index:29 !important; min-width:${KK_W}px; width:${KK_W}px; background:white !important; box-shadow:5px 0 8px -8px rgba(0,0,0,.45); }
         .rt11-table thead .rt11-sticky-nik { z-index:41 !important; background:#f8fafc !important; }
         .rt11-table thead .rt11-sticky-nama { z-index:40 !important; background:#f8fafc !important; }
@@ -349,40 +349,92 @@ export default function Page() {
         .rt11-table tbody tr:hover .rt11-sticky-kk { background:#eff6ff !important; }
         .rt11-scroll-note { font-size:11px; color:#64748b; margin:6px 0 8px; }
         @media(max-width:768px) {
+          .rt11-table .rt11-sticky-nik {
+            position:sticky !important;
+            left:0 !important;
+            z-index:60 !important;
+            min-width:125px !important;
+            width:125px !important;
+            max-width:125px !important;
+            background:#fff !important;
+            overflow:hidden !important;
+            box-shadow:1px 0 0 #e2e8f0;
+          }
+
+          .rt11-table .rt11-sticky-nama {
+            position:sticky !important;
+            left:125px !important;
+            z-index:59 !important;
+            min-width:145px !important;
+            width:145px !important;
+            max-width:145px !important;
+            background:#fff !important;
+            overflow:hidden !important;
+            box-shadow:1px 0 0 #e2e8f0;
+          }
+
+          .rt11-table thead .rt11-sticky-nik {
+            z-index:80 !important;
+            background:#f8fafc !important;
+          }
+
+          .rt11-table thead .rt11-sticky-nama {
+            z-index:79 !important;
+            background:#f8fafc !important;
+          }
+
+          .rt11-table .rt11-sticky-nama,
+          .rt11-table .rt11-sticky-nik {
+            white-space:nowrap !important;
+            text-overflow:clip !important;
+          }
+
+          .rt11-table .rt11-sticky-kk {
+            position:static !important;
+            left:auto !important;
+            z-index:auto !important;
+            min-width:auto !important;
+            width:auto !important;
+            max-width:none !important;
+            background:inherit !important;
+            box-shadow:none !important;
+          }
+        }
+        @media(max-width:768px) {
           .rt11-left-scroll { left:-14px; width:12px; }
-          .rt11-body-scroll { max-height:560px; }
+          .rt11-body-scroll { max-height:560px; overflow-x:auto; overflow-y:auto; }
         }
       `}</style>
 
       <div className="max-w-[1500px] mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-start justify-between gap-3 mb-5 sm:items-center sm:mb-6">
           <div>
-            <h1 className="text-2xl font-black">Data Warga</h1>
+            <h1 className="text-xl font-black sm:text-2xl">Data Warga</h1>
             <p className="text-sm text-slate-500">Database kependudukan <RtInfo mode="short" /></p>
           </div>
-          <a href="/panel" className="text-blue-600 font-bold text-sm"> Kembali</a>
+          <a href="/panel" className="shrink-0 text-blue-600 font-bold text-xs sm:text-sm">Kembali</a>
         </div>
 
         {msg && <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm">{msg}</div>}
 
         <div className="grid md:grid-cols-2 gap-4 mb-5">
-          <div className="bg-white border rounded-2xl p-5">
+          <div className="w-full min-w-0 bg-white border rounded-2xl p-4 sm:p-5">
             <div className="text-2xl"></div>
             <h2 className="font-black mt-2">Input Data Warga</h2>
             <p className="text-xs text-slate-500 mt-1 mb-4">Form lengkap sesuai database kependudukan <RtInfo mode="short" />.</p>
-            <button onClick={()=>setShow(!show)} className="bg-blue-600 text-white rounded-xl px-5 py-3 font-bold">
+            <button onClick={()=>setShow(!show)} className="w-full sm:w-auto bg-blue-600 text-white rounded-xl px-5 py-3 font-bold">
               {show?"Tutup Form":"+ Tambah Warga"}
             </button>
           </div>
 
-          <div className="bg-white border rounded-2xl p-5">
+          <div className="w-full min-w-0 bg-white border rounded-2xl p-4 sm:p-5">
             <div className="text-2xl"></div>
             <h2 className="font-black mt-2">Import Excel</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">Daerah asal KK dicatat sebagai nama daerah, bukan nomor KK.</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input type="file" accept=".xlsx,.xls" onChange={e=>setFile(e.target.files?.[0]||null)}
-                className="border rounded-xl p-2 text-xs flex-1 min-w-0"/>
-              <button onClick={previewExcel} disabled={busy} className="bg-blue-600 text-white rounded-xl px-4 font-bold">
+                className="w-full min-w-0 border rounded-xl p-3 text-xs sm:flex-1"/>
+              <button onClick={previewExcel} disabled={busy} className="w-full shrink-0 bg-blue-600 text-white rounded-xl px-4 py-3 font-bold sm:w-auto">
                 Preview Excel
               </button>
             </div>
@@ -470,9 +522,9 @@ export default function Page() {
               ))}
             </div>
 
-            <div className="rt11-scroll-note">
+            <div className="rt11-scroll-note text-[10px] leading-4 sm:text-xs">
               • Scroll vertikal juga tersedia di kiri.  Gunakan scrollbar atas untuk geser ke kanan.
-              <b> NIK, Nama Lengkap, dan No. KK tetap menempel.</b>
+              <b> NIK dan Nama Lengkap tetap menempel.</b>
             </div>
 
             <TableScroller
@@ -486,7 +538,7 @@ export default function Page() {
                   <tr>
                     {cols.map(([key,label],i)=>(
                       <th key={key} className={`p-2 text-left whitespace-nowrap border-b font-bold ${
-                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":i===2?"rt11-sticky-kk":""
+                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":""
                       }`}>{label}</th>
                     ))}
                   </tr>
@@ -496,7 +548,7 @@ export default function Page() {
                     <tr key={`${x.nik}-${i}`} className="border-b hover:bg-slate-50">
                       {cols.map(([key],j)=>(
                         <td key={key} className={`p-2 whitespace-nowrap ${
-                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":j===2?"rt11-sticky-kk":""
+                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":""
                         }`}>
                           {x[key]==null || String(x[key]).trim()==="" ? "-" : String(x[key])}
                         </td>
@@ -516,21 +568,21 @@ export default function Page() {
           </section>
         )}
 
-        <section className="bg-white border rounded-2xl overflow-hidden">
-          <div className="p-5 flex flex-col md:flex-row justify-between gap-3">
+        <section className="w-full min-w-0 overflow-hidden rounded-2xl border bg-white">
+          <div className="flex flex-col justify-between gap-3 p-3 sm:flex-row sm:items-center sm:p-5">
             <div>
               <h2 className="font-black">Daftar Warga</h2>
               <p className="text-xs text-slate-500">{data.length} data tersimpan</p>
             </div>
             <input value={q} onChange={e=>setQ(e.target.value)}
               placeholder="Cari NIK, nama, No KK, daerah KK asal..."
-              className="border rounded-xl p-3 w-full md:w-80"/>
+              className="w-full rounded-xl border p-3 text-sm sm:w-80"/>
           </div>
 
-          <div className="px-5 pb-5">
-            <div className="rt11-scroll-note">
+          <div className="min-w-0 px-2 pb-3 sm:px-5 sm:pb-5">
+            <div className="rt11-scroll-note text-[10px] leading-4 sm:text-xs">
               • Scroll vertikal di kiri &nbsp;•&nbsp;  Scroll horizontal di atas
-              &nbsp;•&nbsp; <b>NIK, Nama Lengkap, No. KK sticky</b>
+              &nbsp;•&nbsp; <b>NIK dan Nama Lengkap sticky</b>
             </div>
 
             <TableScroller
@@ -539,15 +591,15 @@ export default function Page() {
               leftRef={listLeft}
               leftInnerRef={listLeftInner}
             >
-              <table className="rt11-table text-sm">
+              <table className="rt11-table text-[11px] sm:text-sm">
                 <thead>
                   <tr>
                     {cols.map(([key,label],i)=>(
-                      <th key={key} className={`p-3 text-left whitespace-nowrap ${
-                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":i===2?"rt11-sticky-kk":""
+                      <th key={key} className={`p-2 text-left whitespace-nowrap sm:p-3 ${
+                        i===0?"rt11-sticky-nik":i===1?"rt11-sticky-nama":""
                       }`}>{label}</th>
                     ))}
-                    <th className="p-3 text-left whitespace-nowrap sticky right-0 z-30 bg-slate-50 border-l">
+                    <th className="p-2 text-left whitespace-nowrap border-l bg-slate-50 sm:p-3">
                       Aksi
                     </th>
                   </tr>
@@ -559,18 +611,18 @@ export default function Page() {
                         let v=x[key];
                         if(key==="tanggalLahir" || key==="tanggalAkhirPaspor")
                           v=v ? new Date(v).toLocaleDateString("id-ID") : "";
-                        return <td key={key} className={`p-3 whitespace-nowrap ${
-                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":j===2?"rt11-sticky-kk":""
+                        return <td key={key} className={`p-2 whitespace-nowrap sm:p-3 ${
+                          j===0?"rt11-sticky-nik":j===1?"rt11-sticky-nama":""
                         }`}>{v || "-"}</td>;
                       })}
 
-                      <td className="p-2 sticky right-0 z-20 bg-white border-l">
+                      <td className="p-2 bg-white border-l sm:p-3">
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={()=>editWarga(x)}
                             disabled={busy}
-                            className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            className="min-h-9 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
                           >
                             Edit
                           </button>
@@ -657,6 +709,12 @@ function Select({
     </select>
   </label>;
 }
+
+
+
+
+
+
 
 
 

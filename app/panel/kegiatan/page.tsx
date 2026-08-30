@@ -195,7 +195,7 @@ export default function KegiatanPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5">
           <div>
             <div className="text-xl font-black">
-              Ž‰ Kegiatan RT
+              Kegiatan RT
             </div>
 
             <div className="mt-1 text-xs text-blue-100">
@@ -207,7 +207,7 @@ export default function KegiatanPage() {
             onClick={() => router.push("/panel")}
             className="rounded-xl bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
           >
-             Beranda
+            Beranda
           </button>
         </div>
       </header>
@@ -383,7 +383,7 @@ export default function KegiatanPage() {
 
                       {row.lokasi && (
                         <div className="mt-1 text-sm text-slate-500">
-                           {row.lokasi}
+                           {row.lokasi}
                         </div>
                       )}
 

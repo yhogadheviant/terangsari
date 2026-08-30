@@ -50,7 +50,7 @@ export default function KelompokUsiaPage(){
       <div className="flex justify-between items-start mb-6">
         <div><h1 className="text-2xl font-black">Kelompok Usia</h1>
           <p className="text-sm text-slate-500">Pengelompokan otomatis berdasarkan tanggal lahir Data Warga <RtInfo mode="short" /></p></div>
-        <a href="/panel" className="text-blue-600 font-bold text-sm"> Kembali</a>
+        <a href="/panel" className="text-blue-600 font-bold text-sm">Kembali</a>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

@@ -89,3 +89,126 @@ a:focus-visible {
   font-size: 12px;
   font-weight: 700;
 }
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+}
+
+/* =========================================================
+   DATA WARGA - MOBILE TABLE
+   ========================================================= */
+
+.rt11-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.rt11-table th,
+.rt11-table td {
+  vertical-align: middle;
+}
+
+@media (max-width: 639px) {
+  .rt11-table th,
+  .rt11-table td {
+    padding: 7px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .rt11-table th {
+    font-size: 10px !important;
+  }
+
+  .rt11-table .rt11-sticky-nik {
+    min-width: 125px;
+    max-width: 125px;
+  }
+
+  .rt11-table .rt11-sticky-nama {
+    min-width: 145px;
+    max-width: 145px;
+  }
+
+  .rt11-table .rt11-sticky-kk {
+    min-width: 135px;
+    max-width: 135px;
+  }
+
+  .rt11-scroll-note {
+    overflow: hidden;
+    white-space: normal;
+    margin-bottom: 6px;
+  }
+
+  /* Area tabel tidak boleh membuat body ikut melebar */
+  .rt11-table-wrap,
+  [class*="overflow-x-auto"] {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .rt11-table .rt11-sticky-nik {
+    min-width: 115px;
+    max-width: 115px;
+  }
+
+  .rt11-table .rt11-sticky-nama {
+    min-width: 135px;
+    max-width: 135px;
+  }
+
+  .rt11-table .rt11-sticky-kk {
+    min-width: 125px;
+    max-width: 125px;
+  }
+}
+
+/* =========================================================
+   DATA WARGA - FORM MOBILE
+   ========================================================= */
+
+@media (max-width: 639px) {
+  .rt11-warga-form {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .rt11-warga-form input,
+  .rt11-warga-form select,
+  .rt11-warga-form textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .rt11-warga-form button {
+    min-height: 44px;
+  }
+
+  input[type="file"] {
+    max-width: 100%;
+    overflow: hidden;
+  }
+}
