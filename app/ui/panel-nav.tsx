@@ -10,6 +10,7 @@ export default function PanelNav() {
   function logout() {
     localStorage.removeItem("rt_role");
     localStorage.removeItem("rt_username");
+    localStorage.removeItem("rt11_username");
     router.replace("/");
   }
 
@@ -56,3 +57,4 @@ export default function PanelNav() {
     </div>
   );
 }
+
