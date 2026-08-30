@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, Home, LogOut } from "lucide-react";
 
 export default function PanelNav() {
   const router = useRouter();
@@ -19,37 +20,39 @@ export default function PanelNav() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className={`shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition ${
+            className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition ${
               pathname === "/"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700"
             }`}
           >
-              Beranda
+            <Home className="h-4 w-4" strokeWidth={2.2} />
+            <span>Beranda</span>
           </button>
 
           <button
             type="button"
             onClick={() => router.push("/panel")}
-            className={`shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition ${
+            className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition ${
               pathname === "/panel"
                 ? "bg-blue-600 text-white"
                 : "bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700"
             }`}
           >
-            “‹ Panel
+            <ArrowLeft className="h-4 w-4" strokeWidth={2.2} />
+            <span>Panel</span>
           </button>
         </div>
 
         <button
           type="button"
           onClick={logout}
-          className="shrink-0 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100"
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100"
         >
-          Keluar
+          <LogOut className="h-4 w-4" strokeWidth={2.2} />
+          <span>Keluar</span>
         </button>
       </div>
     </div>
   );
 }
-

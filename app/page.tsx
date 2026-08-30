@@ -1,6 +1,22 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  ContactRound,
+  FileBarChart,
+  Hand,
+  Landmark,
+  LockKeyhole,
+  LogIn,
+  Megaphone,
+  Settings,
+  Shield,
+  Users,
+  Wallet,
+} from "lucide-react";
 import AppName from "./ui/app-name";
 
 type Pengumuman = {
@@ -33,17 +49,18 @@ type RTUnit = {
 };
 
 const menu = [
-  { icon: "👨‍👩‍👧", title: "Data KK", href: "/panel/kk", private: true },
-  { icon: "👥", title: "Data Warga", href: "/panel/warga", private: true },
-  { icon: "📊", title: "Kelompok Usia", href: "/panel/kelompok-usia", private: true },
-  { icon: "💰", title: "Kas RT", href: "/panel/kas", private: true },
-  { icon: "🛡️", title: "Dana Taktis", href: "/panel/dana-taktis", private: true },
-  { icon: "📱", title: "Iuran & QRIS", href: "/panel/iuran", private: true },
-  { icon: "📢", title: "Pengumuman", href: "/panel/pengumuman", private: false },
-  { icon: "🎉", title: "Kegiatan RT", href: "/panel/kegiatan", private: false },
-  { icon: "📄", title: "Laporan", href: "/panel/laporan", private: true },
-  { icon: "⚙️", title: "Pengaturan", href: "/panel/pengaturan", private: true },
+  { icon: ContactRound, title: "Data KK", href: "/panel/kk", private: true },
+  { icon: Users, title: "Data Warga", href: "/panel/warga", private: true },
+  { icon: BarChart3, title: "Kelompok Usia", href: "/panel/kelompok-usia", private: true },
+  { icon: Landmark, title: "Kas RT", href: "/panel/kas", private: true },
+  { icon: Shield, title: "Dana Taktis", href: "/panel/dana-taktis", private: true },
+  { icon: Wallet, title: "Iuran & QRIS", href: "/panel/iuran", private: true },
+  { icon: Megaphone, title: "Pengumuman", href: "/panel/pengumuman", private: false },
+  { icon: CalendarDays, title: "Kegiatan RT", href: "/panel/kegiatan", private: false },
+  { icon: FileBarChart, title: "Laporan", href: "/panel/laporan", private: true },
+  { icon: Settings, title: "Pengaturan", href: "/panel/pengaturan", private: true },
 ];
+
 export default function Home() {
   const [rtUnit, setRtUnit] = useState<RTUnit | null>(null);
   const [pengumuman, setPengumuman] = useState<Pengumuman[]>([]);
@@ -60,18 +77,17 @@ export default function Home() {
 
   async function loadRTUnit() {
     try {
-      // Prioritaskan data RT yang sudah disimpan saat login.
       const saved = localStorage.getItem("rt_rtUnit");
 
       if (saved) {
         const parsed = JSON.parse(saved) as RTUnit;
+
         if (parsed?.kodeRT && parsed?.kodeRW) {
           setRtUnit(parsed);
           return;
         }
       }
 
-      // Fallback: ambil identitas RT dari session server.
       const response = await fetch("/api/auth/me", {
         cache: "no-store",
       });
@@ -90,6 +106,7 @@ export default function Home() {
 
       if (candidate?.kodeRT && candidate?.kodeRW) {
         setRtUnit(candidate as RTUnit);
+
         localStorage.setItem(
           "rt_rtUnit",
           JSON.stringify(candidate)
@@ -124,8 +141,6 @@ export default function Home() {
     } catch (error) {
       console.error("HOME_AUTH_CHECK_ERROR:", error);
 
-      // Jika API gagal tetapi browser masih memiliki
-      // identitas login dari Panel, anggap UI masih login.
       setAuthenticated(
         Boolean(
           localStorage.getItem("rt_role") ||
@@ -147,7 +162,7 @@ export default function Home() {
     } finally {
       localStorage.removeItem("rt11_userId");
       localStorage.removeItem("rt11_username");
-setAuthenticated(false);
+      setAuthenticated(false);
 
       window.location.href = "/";
     }
@@ -197,15 +212,12 @@ setAuthenticated(false);
         );
       }
 
-      // API /api/kegiatan mengirim field "kegiatan",
-      // bukan "data".
       const rows: Kegiatan[] = Array.isArray(d.kegiatan)
         ? d.kegiatan
         : Array.isArray(d.data)
           ? d.data
           : [];
 
-      // Awal hari ini.
       const now = new Date();
 
       const today = new Date(
@@ -248,7 +260,15 @@ setAuthenticated(false);
   const nomorRT = kodeRT ? `RT ${kodeRT}` : "";
   const nomorRW = kodeRW ? `RW ${kodeRW}` : "";
   const namaWilayah = rtUnit?.perumahan || "";
-  const wilayahDisplay = [namaWilayah, [nomorRT, nomorRW].filter(Boolean).join(" / ")].filter(Boolean).join(" • ");
+
+  const wilayahDisplay = [
+    namaWilayah,
+    [nomorRT, nomorRW]
+      .filter(Boolean)
+      .join(" / "),
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -257,8 +277,7 @@ setAuthenticated(false);
       <header className="bg-blue-700 text-white">
         <div className="mx-auto max-w-6xl px-4 py-6">
 
-          <div className="flex items-center justify-between">
-
+          <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-2xl font-black">
                 <AppName />
@@ -269,7 +288,7 @@ setAuthenticated(false);
               </div>
             </div>
 
-                        {checkingAuth ? (
+            {checkingAuth ? (
               <div className="rounded-xl bg-white/70 px-4 py-2 text-sm font-bold text-blue-700">
                 Memeriksa...
               </div>
@@ -277,19 +296,20 @@ setAuthenticated(false);
               <button
                 type="button"
                 onClick={logout}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+                className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
               >
-                Keluar
+                <LogIn className="h-4 w-4 rotate-180" strokeWidth={2.2} />
+                <span>Keluar</span>
               </button>
             ) : (
               <a
                 href="/login"
-                className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700"
+                className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
               >
-                🔐 Login
+                <LogIn className="h-4 w-4" strokeWidth={2.2} />
+                <span>Login</span>
               </a>
             )}
-
           </div>
 
           <div className="mt-6">
@@ -297,8 +317,11 @@ setAuthenticated(false);
               Portal Digital Warga
             </div>
 
-            <div className="mt-1 text-xl font-bold">
-              Selamat datang di {nomorRT} 👋
+            <div className="mt-1 flex items-center gap-2 text-xl font-bold">
+              <span>
+                Selamat datang di {nomorRT}
+              </span>
+              <Hand className="h-5 w-5" strokeWidth={2} />
             </div>
           </div>
 
@@ -320,16 +343,22 @@ setAuthenticated(false);
                 <a
                   key={m.title}
                   href={m.href}
-                  className="rounded-2xl border bg-white p-4 shadow-sm transition hover:border-blue-400"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md"
                 >
-                  <div className="flex justify-between">
+                  <div className="flex items-center justify-between">
 
-                    <div className="text-2xl">
-                      {m.icon}
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                      <m.icon
+                        className="h-6 w-6"
+                        strokeWidth={2.2}
+                      />
                     </div>
 
                     {m.private && (
-                      <span>🔒</span>
+                      <LockKeyhole
+                        className="h-4 w-4 text-slate-400"
+                        strokeWidth={2}
+                      />
                     )}
 
                   </div>
@@ -338,8 +367,12 @@ setAuthenticated(false);
                     {m.title}
                   </div>
 
-                  <div className="mt-2 text-xs font-bold text-blue-600">
-                    Buka →
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-bold text-blue-600">
+                    <span>Buka</span>
+                    <ArrowRight
+                      className="h-3.5 w-3.5"
+                      strokeWidth={2.5}
+                    />
                   </div>
                 </a>
               ) : (
@@ -348,16 +381,22 @@ setAuthenticated(false);
                   onClick={() =>
                     alert(`${m.title} belum dibuat`)
                   }
-                  className="rounded-2xl border bg-white p-4 text-left shadow-sm"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
                 >
-                  <div className="flex justify-between">
+                  <div className="flex items-center justify-between">
 
-                    <div className="text-2xl">
-                      {m.icon}
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                      <m.icon
+                        className="h-6 w-6"
+                        strokeWidth={2.2}
+                      />
                     </div>
 
                     {m.private && (
-                      <span>🔒</span>
+                      <LockKeyhole
+                        className="h-4 w-4 text-slate-400"
+                        strokeWidth={2}
+                      />
                     )}
 
                   </div>
@@ -376,13 +415,17 @@ setAuthenticated(false);
         <section className="mt-6 grid gap-4 md:grid-cols-2">
 
           {/* PENGUMUMAN */}
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
             <div className="mb-4 flex items-center justify-between">
 
               <div>
-                <h2 className="text-lg font-black">
-                  📢 Pengumuman Terbaru
+                <h2 className="flex items-center gap-2 text-lg font-black">
+                  <Megaphone
+                    className="h-5 w-5 text-blue-600"
+                    strokeWidth={2.2}
+                  />
+                  <span>Pengumuman Terbaru</span>
                 </h2>
 
                 <p className="text-xs text-slate-500">
@@ -392,9 +435,13 @@ setAuthenticated(false);
 
               <a
                 href="/panel/pengumuman"
-                className="text-xs font-bold text-blue-600"
+                className="flex items-center gap-1 text-xs font-bold text-blue-600"
               >
-                Lihat →
+                <span>Lihat</span>
+                <ArrowRight
+                  className="h-3.5 w-3.5"
+                  strokeWidth={2.5}
+                />
               </a>
 
             </div>
@@ -431,13 +478,17 @@ setAuthenticated(false);
           </div>
 
           {/* KEGIATAN */}
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
             <div className="mb-4 flex items-center justify-between">
 
               <div>
-                <h2 className="text-lg font-black">
-                  🎉 Kegiatan Terdekat
+                <h2 className="flex items-center gap-2 text-lg font-black">
+                  <CalendarDays
+                    className="h-5 w-5 text-blue-600"
+                    strokeWidth={2.2}
+                  />
+                  <span>Kegiatan Terdekat</span>
                 </h2>
 
                 <p className="text-xs text-slate-500">
@@ -447,9 +498,13 @@ setAuthenticated(false);
 
               <a
                 href="/panel/kegiatan"
-                className="text-xs font-bold text-blue-600"
+                className="flex items-center gap-1 text-xs font-bold text-blue-600"
               >
-                Lihat →
+                <span>Lihat</span>
+                <ArrowRight
+                  className="h-3.5 w-3.5"
+                  strokeWidth={2.5}
+                />
               </a>
 
             </div>
@@ -466,28 +521,26 @@ setAuthenticated(false);
                     key={k.id}
                     className="rounded-xl border p-3"
                   >
-
                     <div className="text-sm font-bold">
-  {k.nama}
-</div>
+                      {k.nama}
+                    </div>
 
-<div className="mt-1 text-xs text-slate-500">
-  Tanggal: {fmt(k.tanggal)}
-  {k.jam && ` • Jam: ${k.jam}`}
-</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Tanggal: {fmt(k.tanggal)}
+                      {k.jam && ` • Jam: ${k.jam}`}
+                    </div>
 
-{k.lokasi && (
-  <div className="mt-1 text-xs text-slate-500">
-    Lokasi: {k.lokasi}
-  </div>
-)}
+                    {k.lokasi && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Lokasi: {k.lokasi}
+                      </div>
+                    )}
 
-{k.keterangan && (
-  <div className="mt-2 line-clamp-2 text-sm">
-    {k.keterangan}
-  </div>
-)}
-
+                    {k.keterangan && (
+                      <div className="mt-2 line-clamp-2 text-sm">
+                        {k.keterangan}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -506,7 +559,3 @@ setAuthenticated(false);
     </div>
   );
 }
-
-
-
-
