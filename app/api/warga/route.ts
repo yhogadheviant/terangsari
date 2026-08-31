@@ -136,7 +136,19 @@ export async function PUT(req: Request) {
         nama: b.nama,
         nomorKK: b.nomorKK || null,
         daerahKKAsal: b.daerahKKAsal || null,
-        alamat: b.alamat || null,
+        alamat: (
+  b.kkId
+    ? (await prisma.kK.findUnique({
+        where: { id: String(b.kkId) },
+        select: { alamat: true },
+      }))?.alamat
+    : b.nomorKK
+      ? (await prisma.kK.findFirst({
+          where: { nomorKK: String(b.nomorKK) },
+          select: { alamat: true },
+        }))?.alamat
+      : null
+) || null,
         rt: b.rt || null,
         rw: b.rw || null,
         statusTinggal: b.statusTinggal || "TETAP",
@@ -346,7 +358,14 @@ export async function POST(req: Request) {
         create: {
           nomorKK: b.nomorKK,
           kepalaKeluarga: b.nama,
-          alamat: b.alamat || "-",
+          alamat: (
+        kkId
+          ? (await prisma.kK.findUnique({
+              where: { id: kkId },
+              select: { alamat: true },
+            }))?.alamat
+          : null
+      ) || b.alamat || "-",
           rt: b.rt || null,
           rw: b.rw || null,
           statusTinggal: b.statusTinggal || "TETAP",
@@ -371,7 +390,19 @@ export async function POST(req: Request) {
       nama: b.nama,
       nomorKK: b.nomorKK || null,
       daerahKKAsal: b.daerahKKAsal || null,
-      alamat: b.alamat || null,
+      alamat: (
+  b.kkId
+    ? (await prisma.kK.findUnique({
+        where: { id: String(b.kkId) },
+        select: { alamat: true },
+      }))?.alamat
+    : b.nomorKK
+      ? (await prisma.kK.findFirst({
+          where: { nomorKK: String(b.nomorKK) },
+          select: { alamat: true },
+        }))?.alamat
+      : null
+) || null,
       rt: b.rt || null,
       rw: b.rw || null,
 
@@ -445,6 +476,8 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
 
 
 
