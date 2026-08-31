@@ -1,7 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
-import { getRTContext } from "@/app/lib/auth/rt-context";
 
 const DEFAULT_AMOUNT = 40000;
 
@@ -19,14 +18,15 @@ function jsonError(message: string, status = 500) {
 
 export async function GET(request: Request) {
   try {
-    const context = await getRTContext(request);
+    const session = await getSession();
 
-    if (context.response) {
-      return context.response;
+    if (!session) {
+      return jsonError("Belum login.", 401);
     }
 
-    const rTUnitId = context.rTUnitId!;
-
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
+    }
     const url = new URL(request.url);
 
     const periode =
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const [kks, iuran, qris] = await Promise.all([
       prisma.kK.findMany({
         where: {
-          rTUnitId: rTUnitId,
+          rTUnitId: session.rTUnitId,
         },
         orderBy: {
           kepalaKeluarga: "asc",
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
         where: {
           periode,
           kk: {
-            rTUnitId: rTUnitId,
+            rTUnitId: session.rTUnitId,
           },
         },
         include: {
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
 
       prisma.qRISConfig.findFirst({
         where: {
-          rTUnitId: rTUnitId,
+          rTUnitId: session.rTUnitId,
           active: true,
         },
         orderBy: {
@@ -152,18 +152,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getRTContext(request);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
-
     const session = await getSession();
 
     if (!session) {
       return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
     }
 
     const body = await request.json();
@@ -195,7 +191,7 @@ export async function POST(request: Request) {
       // Ambil seluruh KK
       const kks = await prisma.kK.findMany({
         where: {
-          rTUnitId: rTUnitId,
+          rTUnitId: session.rTUnitId,
         },
         select: {
           id: true,
@@ -214,7 +210,7 @@ export async function POST(request: Request) {
         where: {
           periode,
           kk: {
-            rTUnitId: rTUnitId,
+            rTUnitId: session.rTUnitId,
           },
         },
         select: {
@@ -304,7 +300,7 @@ export async function POST(request: Request) {
     const kk = await prisma.kK.findFirst({
       where: {
         id: kkId,
-        rTUnitId: rTUnitId,
+        rTUnitId: session.rTUnitId,
       },
     });
 
@@ -358,7 +354,7 @@ export async function POST(request: Request) {
         periode,
         amount,
         status: "LUNAS",
-        rTUnitId: rTUnitId,
+        rTUnitId: session.rTUnitId,
         method,
         note,
         paidAt: new Date(),
@@ -386,18 +382,14 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const context = await getRTContext(request);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
-
     const session = await getSession();
 
     if (!session) {
       return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
     }
 
     const rawBody = await request.text();
@@ -433,7 +425,7 @@ try {
       where: {
         id,
         kk: {
-          rTUnitId: rTUnitId,
+          rTUnitId: session.rTUnitId,
         },
       },
     });
@@ -480,18 +472,14 @@ try {
 
 export async function PUT(request: Request) {
   try {
-    const context = await getRTContext(request);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
-
     const session = await getSession();
 
     if (!session) {
       return jsonError("Belum login.", 401);
+    }
+
+    if (!session.rTUnitId) {
+      return jsonError("Akun belum memiliki RT.", 403);
     }
 
     const body = await request.json();
@@ -517,7 +505,7 @@ export async function PUT(request: Request) {
 
     const existingQris = await prisma.qRISConfig.findFirst({
       where: {
-        rTUnitId: rTUnitId,
+        rTUnitId: session.rTUnitId,
       },
     });
 
@@ -542,7 +530,7 @@ export async function PUT(request: Request) {
             qrisString,
             imageUrl,
             active,
-            rTUnitId: rTUnitId,
+            rTUnitId: session.rTUnitId,
           },
         });
 
@@ -562,6 +550,5 @@ export async function PUT(request: Request) {
     );
   }
 }
-
 
 

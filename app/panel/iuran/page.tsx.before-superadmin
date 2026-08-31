@@ -34,17 +34,6 @@ const rp = (n: number) =>
   }).format(n);
 
 export default function IuranPage() {
-  function apiHeaders(extra?: Record<string, string>) {
-    const headers: Record<string, string> = { ...(extra || {}) };
-    const role = localStorage.getItem("rt_role");
-    const activeRT = localStorage.getItem("rt_superadmin_active");
-
-    if (role === "superadmin" && activeRT) {
-      headers["x-rt-unit-id"] = activeRT;
-    }
-
-    return headers;
-  }
   const router = useRouter();
 
   const [periode, setPeriode] = useState(
@@ -78,7 +67,7 @@ export default function IuranPage() {
 
     try {
       const r = await fetch(`/api/iuran?periode=${periode}`, {
-        cache: "no-store", credentials: "include", headers: apiHeaders(),
+        cache: "no-store",
       });
 
       const text = await r.text();
@@ -172,7 +161,7 @@ export default function IuranPage() {
   useEffect(() => {
     const role = localStorage.getItem("rt_role");
 
-    if (!role || !["superadmin", "ketua", "bendahara"].includes(role)) {
+    if (!role || !["ketua", "bendahara"].includes(role)) {
       router.replace("/panel");
       return;
     }
@@ -585,7 +574,7 @@ export default function IuranPage() {
 
               <p className="text-xs text-slate-500">
                 {statusFilter === "BELUM_BAYAR"
-                  ? `${belumBayar.length} KK belum melakukan pembayaran â€¢ Total ${rp(totalTunggakan)}`
+                  ? `${belumBayar.length} KK belum melakukan pembayaran • Total ${rp(totalTunggakan)}`
                   : "Satu baris = satu Kepala Keluarga."}
               </p>
             </div>
@@ -834,8 +823,6 @@ export default function IuranPage() {
     </main>
   );
 }
-
-
 
 
 

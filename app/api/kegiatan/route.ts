@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function clean(value: unknown) {
   return value == null ? "" : String(value).trim();
@@ -21,23 +22,27 @@ function parseDate(value: unknown) {
 }
 
 function jsonError(error: string, status: number) {
-  return NextResponse.json({ success: false, error }, { status });
+  return NextResponse.json(
+    { success: false, error },
+    { status }
+  );
 }
 
-export async function GET() {
+/* =========================
+   GET KEGIATAN
+========================= */
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    const where = session?.rTUnitId
-      ? {
-          rTUnitId: session.rTUnitId,
-        }
-      : {
-          aktif: true,
-        };
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
 
     const rows = await prisma.kegiatan.findMany({
-      where,
+      where: {
+        rTUnitId,
+      },
       orderBy: [
         {
           tanggal: "asc",
@@ -72,15 +77,16 @@ export async function GET() {
   }
 }
 
+/* =========================
+   POST KEGIATAN
+========================= */
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) return context.response;
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
+    const rTUnitId = context.rTUnitId!;
 
     const body = await request.json();
 
@@ -109,7 +115,7 @@ export async function POST(request: Request) {
         lokasi: clean(body.lokasi) || null,
         keterangan: clean(body.keterangan) || null,
         aktif: body.aktif !== false,
-        rTUnitId: session.rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -127,15 +133,16 @@ export async function POST(request: Request) {
   }
 }
 
+/* =========================
+   PATCH KEGIATAN
+========================= */
 export async function PATCH(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) return context.response;
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
+    const rTUnitId = context.rTUnitId!;
 
     const body = await request.json();
 
@@ -164,12 +171,13 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const existing = await prisma.kegiatan.findFirst({
-      where: {
-        id,
-        rTUnitId: session.rTUnitId,
-      },
-    });
+    const existing =
+      await prisma.kegiatan.findFirst({
+        where: {
+          id,
+          rTUnitId,
+        },
+      });
 
     if (!existing) {
       return jsonError(
@@ -200,38 +208,42 @@ export async function PATCH(request: Request) {
     console.error("KEGIATAN_PATCH_ERROR:", error);
 
     return jsonError(
-      "Gagal mengubah kegiatan.",
+      "Gagal memperbarui kegiatan.",
       500
     );
   }
 }
 
+/* =========================
+   DELETE KEGIATAN
+========================= */
 export async function DELETE(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) return context.response;
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
+    const rTUnitId = context.rTUnitId!;
 
     const url = new URL(request.url);
-    const id = clean(url.searchParams.get("id"));
+    const id = clean(
+      url.searchParams.get("id")
+    );
 
     if (!id) {
       return jsonError(
-        "ID kegiatan tidak ada.",
+        "ID kegiatan wajib diisi.",
         400
       );
     }
 
-    const existing = await prisma.kegiatan.findFirst({
-      where: {
-        id,
-        rTUnitId: session.rTUnitId,
-      },
-    });
+    const existing =
+      await prisma.kegiatan.findFirst({
+        where: {
+          id,
+          rTUnitId,
+        },
+      });
 
     if (!existing) {
       return jsonError(
@@ -248,6 +260,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({
       success: true,
+      message: "Kegiatan berhasil dihapus.",
     });
   } catch (error) {
     console.error("KEGIATAN_DELETE_ERROR:", error);
@@ -258,6 +271,3 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
-
-

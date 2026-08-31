@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getRTContext } from "@/app/lib/auth/rt-context";
+
+import { getSession } from "@/app/lib/auth/session";
 
 function ageFromBirthDate(value: string | null | undefined) {
   if (!value) return null;
@@ -22,19 +23,27 @@ function ageFromBirthDate(value: string | null | undefined) {
   return age < 0 ? null : age;
 }
 
-export async function GET(req: Request) {
-  const context = await getRTContext(req);
+export async function GET() {
+  const session = await getSession();
 
-  if (context.response) {
-    return context.response;
+  if (!session) {
+    return NextResponse.json(
+      { error: "Belum login." },
+      { status: 401 }
+    );
   }
 
-  const rTUnitId = context.rTUnitId;
+  if (!session.rTUnitId) {
+    return NextResponse.json(
+      { error: "Akun belum memiliki RT." },
+      { status: 403 }
+    );
+  }
 
   const rows = await prisma.warga.findMany({
     where: {
-  rTUnitId,
-},
+      rTUnitId: session.rTUnitId,
+    },
     include: {
       kk: true,
     },
@@ -59,13 +68,21 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const context = await getRTContext(req);
+    const session = await getSession();
 
-    if (context.response) {
-      return context.response;
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
     }
 
-    const rTUnitId = context.rTUnitId!;
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
 
     const b = await req.json();
     const id = String(b.id ?? "").trim();
@@ -88,9 +105,9 @@ export async function PUT(req: Request) {
       );
     }
 
-    if (existing.rTUnitId !== rTUnitId) {
+    if (existing.rTUnitId !== session.rTUnitId) {
       return NextResponse.json(
-        { error: "Data warga bukan milik RT aktif." },
+        { error: "Data warga bukan milik RT Anda." },
         { status: 403 }
       );
     }
@@ -112,7 +129,7 @@ export async function PUT(req: Request) {
       },
     });
 
-    if (duplicate && duplicate.rTUnitId !== rTUnitId) {
+    if (duplicate && duplicate.rTUnitId !== session.rTUnitId) {
       return NextResponse.json(
         { error: "NIK tersebut terdaftar pada RT lain." },
         { status: 409 }
@@ -174,13 +191,21 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const context = await getRTContext(req);
+    const session = await getSession();
 
-    if (context.response) {
-      return context.response;
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
     }
 
-    const rTUnitId = context.rTUnitId!;
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const id = String(body.id ?? "").trim();
@@ -203,9 +228,9 @@ export async function DELETE(req: Request) {
       );
     }
 
-    if (existing.rTUnitId !== rTUnitId) {
+    if (existing.rTUnitId !== session.rTUnitId) {
       return NextResponse.json(
-        { error: "Data warga bukan milik RT aktif." },
+        { error: "Data warga bukan milik RT Anda." },
         { status: 403 }
       );
     }
@@ -229,13 +254,21 @@ export async function DELETE(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    const context = await getRTContext(req);
+    const session = await getSession();
 
-    if (context.response) {
-      return context.response;
+    if (!session) {
+      return NextResponse.json(
+        { error: "Belum login." },
+        { status: 401 }
+      );
     }
 
-    const rTUnitId = context.rTUnitId!;
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
 
     const b = await req.json();
 
@@ -266,7 +299,7 @@ export async function POST(req: Request) {
 
     if (
       existingWarga &&
-        existingWarga.rTUnitId !== rTUnitId
+        existingWarga.rTUnitId !== session.rTUnitId
     ) {
       return NextResponse.json(
         {
@@ -294,7 +327,7 @@ export async function POST(req: Request) {
           );
         }
 
-        if (targetKKById.rTUnitId !== rTUnitId) {
+        if (targetKKById.rTUnitId !== session.rTUnitId) {
           return NextResponse.json(
             {
               error: "KK tersebut bukan milik RT Anda.",
@@ -313,7 +346,7 @@ export async function POST(req: Request) {
       if (
         existingKK &&
         existingKK.rTUnitId &&
-        existingKK.rTUnitId !== rTUnitId
+        existingKK.rTUnitId !== session.rTUnitId
       ) {
         return NextResponse.json(
           {
@@ -340,7 +373,7 @@ export async function POST(req: Request) {
               ? b.nama
               : undefined,
 
-          rTUnitId,
+          rTUnitId: session.rTUnitId,
         },
 
         create: {
@@ -350,7 +383,7 @@ export async function POST(req: Request) {
           rt: b.rt || null,
           rw: b.rw || null,
           statusTinggal: b.statusTinggal || "TETAP",
-          rTUnitId,
+          rTUnitId: session.rTUnitId,
         },
       });
 
@@ -407,10 +440,10 @@ export async function POST(req: Request) {
       kkId,
 
       /*
-       * RT ditentukan SERVER dari session untuk user RT biasa,
-       * atau dari RT aktif yang divalidasi melalui header untuk Superadmin.
+       * RT ditentukan SERVER dari session.
+       * Bukan dari request browser.
        */
-      rTUnitId,
+      rTUnitId: session.rTUnitId,
     };
 
     const warga = await prisma.warga.upsert({

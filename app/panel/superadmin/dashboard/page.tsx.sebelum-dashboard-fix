@@ -1,0 +1,583 @@
+﻿"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type DashboardKK = {
+  id: string;
+  nomorKK?: string | null;
+  kepalaKeluarga?: string | null;
+  alamat?: string | null;
+  warga?: Array<{
+    id: string;
+    nik?: string | null;
+    nama?: string | null;
+    nomorKK?: string | null;
+    jenisKelamin?: string | null;
+    hubunganKeluarga?: string | null;
+    tempatLahir?: string | null;
+    tanggalLahir?: string | Date | null;
+    usia?: number | null;
+    agama?: string | null;
+    pendidikan?: string | null;
+    pekerjaan?: string | null;
+    statusKawin?: string | null;
+    statusTinggal?: string | null;
+    alamat?: string | null;
+  }>;
+};
+
+type DashboardRT = {
+  id: string;
+  kodeRT?: string | null;
+  kodeRW?: string | null;
+  namaRT?: string | null;
+  perumahan?: string | null;
+  desa?: string | null;
+  kecamatan?: string | null;
+  kabupaten?: string | null;
+  totalKK: number;
+  totalWarga: number;
+  jenisKelamin?: {
+    lakiLaki?: number;
+    perempuan?: number;
+  };
+  usia?: Record<string, number>;
+  statusTinggal?: Record<string, number>;
+  agama?: Record<string, number>;
+  pekerjaan?: Record<string, number>;
+  desaAsalKK?: Record<string, number>;
+  wargaDesaAsalKK?: Record<string, number>;
+  pemilihDesaAsalKK?: Record<string, number>;
+  pemilihPotensial?: number;
+  kks?: DashboardKK[];
+  daftarPemilih?: Array<{
+    id: string;
+    nik?: string | null;
+    nama?: string | null;
+    nomorKK?: string | null;
+    jenisKelamin?: string | null;
+    umur?: number | null;
+    alamat?: string | null;
+  }>;
+};
+
+type DashboardData = {
+  success?: boolean;
+  batasUsiaPemilih?: number;
+  total?: {
+    totalRT?: number;
+    totalKK?: number;
+    totalWarga?: number;
+    pemilihPotensial?: number;
+    lakiLaki?: number;
+    perempuan?: number;
+  };
+  rt: DashboardRT[];
+};
+
+
+function Card({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: number;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-sm font-semibold text-slate-500">
+        {title}
+      </div>
+
+      <div className="mt-2 text-3xl font-black text-slate-900">
+        {value.toLocaleString("id-ID")}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-400">
+        {description}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="mb-4 text-lg font-black text-slate-900">
+        {title}
+      </h2>
+
+      {children}
+    </section>
+  );
+}
+
+export default function SuperadminDashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [selectedRT, setSelectedRT] = useState("ALL");
+  const [selectedDesa, setSelectedDesa] = useState("ALL");
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch("/api/superadmin/dashboard", {
+        cache: "no-store",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          json?.error || "Gagal mengambil dashboard."
+        );
+      }
+
+      setData(json.data || json);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengambil data dashboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const rtList = data?.rt || [];
+
+  const desaList = useMemo(() => {
+    const values = rtList
+      .map((x) => x.desa || "")
+      .filter(Boolean);
+
+    return Array.from(new Set(values)).sort();
+  }, [rtList]);
+
+  const filteredRT = useMemo(() => {
+    return rtList.filter((rt) => {
+      const matchRT =
+        selectedRT === "ALL" ||
+        rt.id === selectedRT;
+
+      const matchDesa =
+        selectedDesa === "ALL" ||
+        (rt.desa || "") === selectedDesa;
+
+      return matchRT && matchDesa;
+    });
+  }, [rtList, selectedRT, selectedDesa]);
+
+  const filteredKKAsal = useMemo(() => {
+    return (data?.kkAsal || []).filter((item) => {
+      if (selectedDesa === "ALL") return true;
+      return item.desa === selectedDesa;
+    });
+  }, [data, selectedDesa]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-2xl border bg-white p-8 text-center shadow-sm">
+            Memuat Dashboard Multi-RT...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+            <div className="font-black text-red-700">
+              Dashboard gagal dimuat
+            </div>
+
+            <div className="mt-2 text-sm text-red-600">
+              {error}
+            </div>
+
+            <button
+              onClick={loadDashboard}
+              className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const ringkasan = data?.ringkasan || {};
+
+  return (
+    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+
+        {/* HEADER */}
+        <div className="mb-6 rounded-2xl bg-blue-700 p-6 text-white shadow-sm">
+          <div className="text-2xl font-black">
+            Dashboard Multi-RT
+          </div>
+
+          <div className="mt-1 text-sm text-blue-100">
+            Rekapitulasi data KK dan warga seluruh RT
+          </div>
+
+          <div className="mt-3 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs font-bold">
+            KHUSUS SUPERADMIN
+          </div>
+        </div>
+
+        {/* RINGKASAN */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card
+            title="Total RT"
+            value={ringkasan.totalRT || 0}
+            description="Seluruh RT terdaftar"
+          />
+
+          <Card
+            title="Total KK"
+            value={ringkasan.totalKK || 0}
+            description="Seluruh kartu keluarga"
+          />
+
+          <Card
+            title="Total Warga"
+            value={ringkasan.totalWarga || 0}
+            description="Seluruh penduduk"
+          />
+
+          <Card
+            title="Pemilih Potensial"
+            value={ringkasan.pemilih || 0}
+            description="Usia yang dapat mengikuti pemilihan"
+          />
+        </div>
+
+        {/* FILTER */}
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 text-lg font-black">
+            Filter Rekapitulasi
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+
+            <div>
+              <label className="mb-1 block text-sm font-bold text-slate-600">
+                RT
+              </label>
+
+              <select
+                value={selectedRT}
+                onChange={(e) =>
+                  setSelectedRT(e.target.value)
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm"
+              >
+                <option value="ALL">
+                  Semua RT
+                </option>
+
+                {rtList.map((rt) => (
+                  <option key={rt.id} value={rt.id}>
+                    RT {rt.kodeRT || "-"} / RW{" "}
+                    {rt.kodeRW || "-"}
+                    {rt.desa
+                      ? ` - ${rt.desa}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-bold text-slate-600">
+                Desa
+              </label>
+
+              <select
+                value={selectedDesa}
+                onChange={(e) =>
+                  setSelectedDesa(e.target.value)
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm"
+              >
+                <option value="ALL">
+                  Semua Desa
+                </option>
+
+                {desaList.map((desa) => (
+                  <option key={desa} value={desa}>
+                    {desa}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+          </div>
+        </div>
+
+        {/* REKAP RT */}
+        <div className="mt-6">
+          <Section title="Rekap Data Per RT">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase text-slate-500">
+                    <th className="px-3 py-3">RT</th>
+                    <th className="px-3 py-3">Desa</th>
+                    <th className="px-3 py-3 text-right">KK</th>
+                    <th className="px-3 py-3 text-right">Warga</th>
+                    <th className="px-3 py-3 text-right">L</th>
+                    <th className="px-3 py-3 text-right">P</th>
+                    <th className="px-3 py-3 text-right">
+                      Pemilih
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredRT.map((rt) => (
+                    <tr
+                      key={rt.id}
+                      className="border-b last:border-0"
+                    >
+                      <td className="px-3 py-3 font-black">
+                        RT {rt.kodeRT || "-"}
+                      </td>
+
+                      <td className="px-3 py-3">
+                        {rt.desa || "-"}
+                      </td>
+
+                      <td className="px-3 py-3 text-right">
+                        {(rt.kk || 0).toLocaleString("id-ID")}
+                      </td>
+
+                      <td className="px-3 py-3 text-right font-bold">
+                        {(rt.warga || 0).toLocaleString("id-ID")}
+                      </td>
+
+                      <td className="px-3 py-3 text-right">
+                        {(rt.lakiLaki || 0).toLocaleString("id-ID")}
+                      </td>
+
+                      <td className="px-3 py-3 text-right">
+                        {(rt.perempuan || 0).toLocaleString("id-ID")}
+                      </td>
+
+                      <td className="px-3 py-3 text-right font-black text-blue-700">
+                        {(rt.pemilih || 0).toLocaleString("id-ID")}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {filteredRT.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-3 py-8 text-center text-slate-400"
+                      >
+                        Tidak ada data sesuai filter.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        </div>
+
+        {/* KELOMPOK USIA */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Section title="Kelompok Usia">
+            <div className="space-y-2">
+              {(data?.kelompokUsia || []).map(
+                (item) => (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3"
+                  >
+                    <span className="font-semibold">
+                      {item.label}
+                    </span>
+
+                    <div className="text-right">
+                      <div className="font-black">
+                        {item.jumlah.toLocaleString(
+                          "id-ID"
+                        )}
+                      </div>
+
+                      {item.pemilih !== undefined && (
+                        <div className="text-xs text-blue-600">
+                          Pemilih:{" "}
+                          {item.pemilih.toLocaleString(
+                            "id-ID"
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </Section>
+
+          {/* STATUS TINGGAL */}
+          <Section title="Status Tinggal">
+            <div className="space-y-2">
+              {(data?.statusTinggal || []).map(
+                (item) => (
+                  <div
+                    key={item.label}
+                    className="flex justify-between rounded-xl bg-slate-50 px-4 py-3"
+                  >
+                    <span className="font-semibold">
+                      {item.label}
+                    </span>
+
+                    <span className="font-black">
+                      {item.jumlah.toLocaleString(
+                        "id-ID"
+                      )}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          </Section>
+        </div>
+
+        {/* AGAMA + PEKERJAAN */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Section title="Agama">
+            <div className="space-y-2">
+              {(data?.agama || []).map((item) => (
+                <div
+                  key={item.label}
+                  className="flex justify-between rounded-xl bg-slate-50 px-4 py-3"
+                >
+                  <span>{item.label}</span>
+                  <span className="font-black">
+                    {item.jumlah.toLocaleString("id-ID")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Pekerjaan">
+            <div className="space-y-2">
+              {(data?.pekerjaan || []).map((item) => (
+                <div
+                  key={item.label}
+                  className="flex justify-between rounded-xl bg-slate-50 px-4 py-3"
+                >
+                  <span>{item.label}</span>
+                  <span className="font-black">
+                    {item.jumlah.toLocaleString("id-ID")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
+
+        {/* KK ASAL */}
+        <div className="mt-6">
+          <Section title="KK Asal Berdasarkan Desa">
+            <div className="mb-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">
+              Rekap KK asal dikelompokkan berdasarkan
+              <strong> desa asal KK</strong>.
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase text-slate-500">
+                    <th className="px-3 py-3">
+                      Desa Asal
+                    </th>
+
+                    <th className="px-3 py-3 text-right">
+                      Jumlah KK
+                    </th>
+
+                    <th className="px-3 py-3 text-right">
+                      Pemilih
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredKKAsal.map((item) => (
+                    <tr
+                      key={item.desa}
+                      className="border-b last:border-0"
+                    >
+                      <td className="px-3 py-3 font-semibold">
+                        {item.desa}
+                      </td>
+
+                      <td className="px-3 py-3 text-right font-black">
+                        {item.jumlah.toLocaleString(
+                          "id-ID"
+                        )}
+                      </td>
+
+                      <td className="px-3 py-3 text-right font-black text-blue-700">
+                        {(item.pemilih || 0).toLocaleString(
+                          "id-ID"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {filteredKKAsal.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="px-3 py-8 text-center text-slate-400"
+                      >
+                        Belum ada data KK asal.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        </div>
+
+      </div>
+    </main>
+  );
+}
+
+
+
+

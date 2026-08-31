@@ -195,6 +195,72 @@ export async function GET() {
         desaAsalKK,
         pemilihDesaAsalKK,
         pemilihPotensial,
+
+        // =================================================
+        // DETAIL KK
+        // =================================================
+
+        kks: unit.kks.map((kk) => ({
+          id: kk.id,
+          nomorKK: kk.nomorKK,
+          kepalaKeluarga: kk.kepalaKeluarga,
+          alamat: kk.alamat,
+
+          warga: warga
+            .filter((w) => w.kkId === kk.id)
+            .map((w) => {
+              const age = w.tanggalLahir
+                ? ageFromBirthDate(w.tanggalLahir)
+                : w.usia ?? null;
+
+              return {
+                id: w.id,
+                nik: w.nik,
+                nama: w.nama,
+                nomorKK: kk.nomorKK,
+                jenisKelamin: w.jenisKelamin,
+                hubunganKeluarga: w.hubunganKeluarga,
+                tempatLahir: w.tempatLahir,
+                tanggalLahir: w.tanggalLahir,
+                usia: age,
+                agama: w.agama,
+                pendidikan: w.pendidikan,
+                pekerjaan: w.pekerjaan,
+                statusKawin: w.statusKawin,
+                statusTinggal: w.statusTinggal,
+                alamat: w.alamat,
+              };
+            }),
+        })),
+
+        // =================================================
+        // DAFTAR PEMILIH POTENSIAL
+        // =================================================
+
+        daftarPemilih: warga
+          .map((w) => {
+            const age = w.tanggalLahir
+              ? ageFromBirthDate(w.tanggalLahir)
+              : w.usia ?? null;
+
+            return {
+              id: w.id,
+              nik: w.nik,
+              nama: w.nama,
+              nomorKK:
+                unit.kks.find(
+                  (kk) => kk.id === w.kkId
+                )?.nomorKK ?? "",
+              jenisKelamin: w.jenisKelamin,
+              umur: age,
+              alamat: w.alamat,
+            };
+          })
+          .filter(
+            (w) =>
+              w.umur !== null &&
+              w.umur >= BATAS_USIA_PEMILIH
+          ),
       };
     });
 
@@ -252,6 +318,7 @@ export async function GET() {
     );
   }
 }
+
 
 
 

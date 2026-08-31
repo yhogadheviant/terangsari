@@ -1,0 +1,920 @@
+﻿"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
+
+type RtData = {
+  id: string;
+  kodeRT?: string;
+  kodeRW?: string;
+  namaRT?: string;
+  desa?: string | null;
+  perumahan?: string | null;
+  totalKK?: number;
+  totalWarga?: number;
+  jenisKelamin?: {
+    lakiLaki?: number;
+    perempuan?: number;
+  };
+  usia?: Record<string, number>;
+  statusTinggal?: Record<string, number>;
+  agama?: Record<string, number>;
+  pekerjaan?: Record<string, number>;
+  desaAsalKK?: Record<string, number>;
+  wargaDesaAsalKK?: Record<string, number>;
+  pemilihDesaAsalKK?: Record<string, number>;
+  pemilihPotensial?: number;
+};
+
+type DashboardData = {
+  success?: boolean;
+  batasUsiaPemilih?: number;
+  total?: {
+    totalRT?: number;
+    totalKK?: number;
+    totalWarga?: number;
+    lakiLaki?: number;
+    perempuan?: number;
+    pemilihPotensial?: number;
+  };
+  rt?: RtData[];
+};
+
+function Card({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: number;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-sm font-semibold text-slate-500">
+        {title}
+      </div>
+
+      <div className="mt-2 text-3xl font-black text-slate-900">
+        {value.toLocaleString("id-ID")}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-400">
+        {description}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="mb-4 text-lg font-black text-slate-900">
+        {title}
+      </h2>
+
+      {children}
+    </section>
+  );
+}
+
+function MapList({
+  data,
+}: {
+  data: Record<string, number>;
+}) {
+  const rows = Object.entries(data).sort(
+    (a, b) => b[1] - a[1]
+  );
+
+  if (rows.length === 0) {
+    return (
+      <div className="py-6 text-center text-sm text-slate-400">
+        Belum ada data.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map(([label, jumlah]) => (
+        <div
+          key={label}
+          className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3"
+        >
+          <span className="font-semibold text-slate-700">
+            {label}
+          </span>
+
+          <span className="font-black text-slate-900">
+            {jumlah.toLocaleString("id-ID")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function SuperadminDashboardPage() {
+  const [data, setData] =
+    useState<DashboardData | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [selectedRT, setSelectedRT] =
+    useState<string[]>([]);
+
+  const [selectedKK, setSelectedKK] =
+    useState("ALL");
+
+  const [selectedDesa, setSelectedDesa] =
+    useState<string[]>([]);
+
+  const [selectedDesaAsal, setSelectedDesaAsal] =
+    useState("ALL");
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch(
+        "/api/superadmin/dashboard",
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          json?.error ||
+            "Gagal mengambil dashboard."
+        );
+      }
+
+      setData(json);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengambil data dashboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const rtList = data?.rt || [];
+
+  // =====================================================
+  // FILTER KK BERDASARKAN RT
+  // =====================================================
+
+  const desaList = useMemo(() => {
+    return Array.from(
+      new Set(
+        rtList
+          .map((x) => x.desa || "")
+          .filter(Boolean)
+      )
+    ).sort();
+  }, [rtList]);
+
+  const filteredRT = useMemo(() => {
+    return rtList.filter((rt) => {
+      const matchRT =
+        selectedRT.length === 0 ||
+        selectedRT.includes(rt.id);
+
+      const matchDesa =
+        selectedDesa.length === 0 ||
+        selectedDesa.includes(rt.desa || "");
+
+      return matchRT && matchDesa;
+    });
+  }, [
+    rtList,
+    selectedRT,
+    selectedDesa,
+  ]);
+
+  // =====================================================
+  // DAFTAR KK SESUAI FILTER RT + DESA
+  // =====================================================
+
+  const kkList = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      rtId: string;
+      kodeRT: string;
+      kodeRW: string;
+      desa: string;
+      nomorKK: string;
+      kepalaKeluarga: string;
+    }> = [];
+
+    filteredRT.forEach((rt) => {
+      const kks = Array.isArray((rt as any).kks)
+        ? (rt as any).kks
+        : [];
+
+      kks.forEach((kk: any) => {
+        rows.push({
+          id: String(kk.id),
+          rtId: rt.id,
+          kodeRT: rt.kodeRT || "-",
+          kodeRW: rt.kodeRW || "-",
+          desa: rt.desa || "-",
+          nomorKK: String(kk.nomorKK || ""),
+          kepalaKeluarga:
+            String(kk.kepalaKeluarga || ""),
+        });
+      });
+    });
+
+    return rows;
+  }, [filteredRT]);
+
+  const desaAsalList = useMemo(() => {
+    const values = new Set<string>();
+
+    filteredRT.forEach((rt) => {
+      Object.keys(rt.desaAsalKK || {}).forEach(
+        (desa) => values.add(desa)
+      );
+    });
+
+    return Array.from(values).sort();
+  }, [filteredRT]);
+
+  const kkAsalRows = useMemo(() => {
+    const result: Array<{
+      rt: string;
+      rw: string;
+      desaWilayah: string;
+      desaAsal: string;
+      jumlahKK: number;
+      jumlahWarga: number;
+      pemilih: number;
+    }> = [];
+
+    filteredRT.forEach((rt) => {
+      const dataKK = rt.desaAsalKK || {};
+      const dataWarga = rt.wargaDesaAsalKK || {};
+      const dataPemilih = rt.pemilihDesaAsalKK || {};
+
+      Object.entries(dataKK).forEach(
+        ([desaAsal, jumlahKK]) => {
+
+          if (
+            selectedDesaAsal !== "ALL" &&
+            desaAsal !== selectedDesaAsal
+          ) {
+            return;
+          }
+
+          result.push({
+            rt: rt.kodeRT || "-",
+            rw: rt.kodeRW || "-",
+            desaWilayah: rt.desa || "-",
+            desaAsal,
+            jumlahKK,
+            jumlahWarga: dataWarga[desaAsal] || 0,
+            pemilih: dataPemilih[desaAsal] || 0,
+          });
+        }
+      );
+    });
+
+    return result;
+  }, [
+    filteredRT,
+    selectedDesaAsal,
+  ]);
+
+  const filteredSummary = useMemo(() => {
+    const summary = {
+      totalKK: 0,
+      totalWarga: 0,
+      lakiLaki: 0,
+      perempuan: 0,
+      pemilih: 0,
+      usia: {
+        "0-5": 0,
+        "6-12": 0,
+        "13-17": 0,
+        "18-25": 0,
+        "26-40": 0,
+        "41-59": 0,
+        "60+": 0,
+        "Tidak diketahui": 0,
+      } as Record<string, number>,
+    };
+
+    filteredRT.forEach((rt) => {
+      const kks = Array.isArray((rt as any).kks)
+        ? (rt as any).kks
+        : [];
+
+      const selectedKKs =
+        selectedKK === "ALL"
+          ? kks
+          : kks.filter(
+              (kk: any) =>
+                String(kk.id) === selectedKK
+            );
+
+      summary.totalKK += selectedKKs.length;
+
+      selectedKKs.forEach((kk: any) => {
+        const warga = Array.isArray(kk.warga)
+          ? kk.warga
+          : [];
+
+        summary.totalWarga += warga.length;
+
+        warga.forEach((w: any) => {
+          if (w.jenisKelamin === "LAKI_LAKI") {
+            summary.lakiLaki++;
+          }
+
+          if (w.jenisKelamin === "PEREMPUAN") {
+            summary.perempuan++;
+          }
+
+          const age =
+            w.usia === null ||
+            w.usia === undefined ||
+            Number.isNaN(Number(w.usia))
+              ? null
+              : Number(w.usia);
+
+          let group = "Tidak diketahui";
+
+          if (age !== null) {
+            if (age <= 5) {
+              group = "0-5";
+            } else if (age <= 12) {
+              group = "6-12";
+            } else if (age <= 17) {
+              group = "13-17";
+            } else if (age <= 25) {
+              group = "18-25";
+            } else if (age <= 40) {
+              group = "26-40";
+            } else if (age <= 59) {
+              group = "41-59";
+            } else {
+              group = "60+";
+            }
+
+            if (age >= 17) {
+              summary.pemilih++;
+            }
+          }
+
+          summary.usia[group]++;
+        });
+      });
+    });
+
+    return summary;
+  }, [filteredRT, selectedKK]);
+
+  function getFilteredKKs() {
+    const result: Array<{
+      rt: RtData;
+      kk: any;
+    }> = [];
+
+    filteredRT.forEach((rt) => {
+      const kks = Array.isArray((rt as any).kks)
+        ? (rt as any).kks
+        : [];
+
+      const selectedKKs =
+        selectedKK === "ALL"
+          ? kks
+          : kks.filter(
+              (kk: any) =>
+                String(kk.id) === selectedKK
+            );
+
+      selectedKKs.forEach((kk: any) => {
+        result.push({ rt, kk });
+      });
+    });
+
+    return result;
+  }
+
+  function exportSuperadminExcel() {
+    const rows = getFilteredKKs();
+
+    if (rows.length === 0) {
+      alert("Tidak ada data KK untuk diekspor.");
+      return;
+    }
+
+    const data: any[][] = [
+      ["LAPORAN REKAP DATA WARGA - SUPERADMIN"],
+      [],
+      [
+        "Filter RT",
+        selectedRT.length === 0
+          ? "Semua RT"
+          : selectedRT,
+      ],
+      [
+        "Filter KK",
+        selectedKK === "ALL"
+          ? "Semua KK"
+          : selectedKK,
+      ],
+      [],
+      [
+        "TOTAL KK",
+        filteredSummary.totalKK,
+      ],
+      [
+        "TOTAL WARGA",
+        filteredSummary.totalWarga,
+      ],
+      [
+        "LAKI-LAKI",
+        filteredSummary.lakiLaki,
+      ],
+      [
+        "PEREMPUAN",
+        filteredSummary.perempuan,
+      ],
+      [
+        "PEMILIH POTENSIAL",
+        filteredSummary.pemilih,
+      ],
+      [],
+      ["KELOMPOK USIA", "JUMLAH"],
+      ...Object.entries(
+        filteredSummary.usia || {}
+      ).map(([label, jumlah]) => [
+        label,
+        jumlah,
+      ]),
+      [],
+      [
+        "RT",
+        "RW",
+        "NOMOR KK",
+        "KEPALA KELUARGA",
+        "NIK",
+        "NAMA",
+        "JENIS KELAMIN",
+        "HUBUNGAN KELUARGA",
+        "TEMPAT LAHIR",
+        "TANGGAL LAHIR",
+        "USIA",
+        "AGAMA",
+        "PENDIDIKAN",
+        "PEKERJAAN",
+        "STATUS TINGGAL",
+      ],
+    ];
+
+    rows.forEach(({ rt, kk }) => {
+      const warga = Array.isArray(kk.warga)
+        ? kk.warga
+        : [];
+
+      warga.forEach((w: any) => {
+        data.push([
+          rt.kodeRT || "",
+          rt.kodeRW || "",
+          String(kk.nomorKK || ""),
+          kk.kepalaKeluarga || "",
+          String(w.nik || ""),
+          w.nama || "",
+          w.jenisKelamin || "",
+          w.hubunganKeluarga || "",
+          w.tempatLahir || "",
+          w.tanggalLahir
+            ? new Date(w.tanggalLahir)
+                .toLocaleDateString("id-ID")
+            : "",
+          w.usia ?? "",
+          w.agama || "",
+          w.pendidikan || "",
+          w.pekerjaan || "",
+          w.statusTinggal || "",
+        ]);
+      });
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const sheet =
+      XLSX.utils.aoa_to_sheet(data);
+
+    sheet["!cols"] = [
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 8 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 20 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      sheet,
+      "Rekap Warga"
+    );
+
+    XLSX.writeFile(
+      workbook,
+      "rekap-data-warga-superadmin.xlsx"
+    );
+  }
+
+  function exportSuperadminPDF() {
+    const rows = getFilteredKKs();
+
+    if (rows.length === 0) {
+      alert("Tidak ada data KK untuk diekspor.");
+      return;
+    }
+
+    const doc = new jsPDF(
+      "l",
+      "mm",
+      "a4"
+    );
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(
+      "LAPORAN REKAP DATA WARGA",
+      148,
+      12,
+      { align: "center" }
+    );
+
+    doc.setFontSize(10);
+    doc.text(
+      "SUPERADMIN",
+      148,
+      18,
+      { align: "center" }
+    );
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+
+    doc.text(
+      `Filter RT: ${
+        selectedRT.length === 0
+          ? "Semua RT"
+          : selectedRT
+      }`,
+      10,
+      26
+    );
+
+    doc.text(
+      `Filter KK: ${
+        selectedKK === "ALL"
+          ? "Semua KK"
+          : selectedKK
+      }`,
+      10,
+      31
+    );
+
+    doc.text(
+      `Total KK: ${filteredSummary.totalKK} | Total Warga: ${filteredSummary.totalWarga} | Pemilih: ${filteredSummary.pemilih}`,
+      10,
+      36
+    );
+
+    const pdfRows: any[][] = [];
+
+    rows.forEach(({ rt, kk }) => {
+      const warga = Array.isArray(kk.warga)
+        ? kk.warga
+        : [];
+
+      warga.forEach((w: any) => {
+        pdfRows.push([
+          rt.kodeRT || "",
+          rt.kodeRW || "",
+          String(kk.nomorKK || ""),
+          kk.kepalaKeluarga || "",
+          String(w.nik || ""),
+          w.nama || "",
+          w.jenisKelamin || "",
+          w.hubunganKeluarga || "",
+          w.usia ?? "",
+          w.agama || "",
+          w.pekerjaan || "",
+          w.statusTinggal || "",
+        ]);
+      });
+    });
+
+    autoTable(doc, {
+      startY: 41,
+      head: [[
+        "RT",
+        "RW",
+        "Nomor KK",
+        "Kepala Keluarga",
+        "NIK",
+        "Nama",
+        "JK",
+        "Hubungan",
+        "Usia",
+        "Agama",
+        "Pekerjaan",
+        "Status Tinggal",
+      ]],
+      body: pdfRows,
+      theme: "grid",
+      styles: {
+        fontSize: 6,
+        cellPadding: 1.5,
+      },
+      headStyles: {
+        fontSize: 6,
+      },
+      margin: {
+        left: 8,
+        right: 8,
+      },
+    });
+
+    const pageCount =
+      doc.getNumberOfPages();
+
+    for (
+      let page = 1;
+      page <= pageCount;
+      page++
+    ) {
+      doc.setPage(page);
+
+      doc.setFont(
+        "helvetica",
+        "normal"
+      );
+      doc.setFontSize(7);
+
+      doc.text(
+        `Rekap Data Warga Superadmin - Halaman ${page} dari ${pageCount}`,
+        148,
+        202,
+        { align: "center" }
+      );
+    }
+
+    doc.save(
+      "rekap-data-warga-superadmin.pdf"
+    );
+  }
+
+  function printSuperadminReport() {
+    window.print();
+  }
+
+  const filteredAge = useMemo(() => {
+    const result: Record<string, number> = {};
+
+    filteredRT.forEach((rt) => {
+      Object.entries(rt.usia || {}).forEach(
+        ([label, jumlah]) => {
+          result[label] =
+            (result[label] || 0) + jumlah;
+        }
+      );
+    });
+
+    return result;
+  }, [filteredRT]);
+
+  const filteredStatus = useMemo(() => {
+    const result: Record<string, number> = {};
+
+    filteredRT.forEach((rt) => {
+      Object.entries(
+        rt.statusTinggal || {}
+      ).forEach(([label, jumlah]) => {
+        result[label] =
+          (result[label] || 0) + jumlah;
+      });
+    });
+
+    return result;
+  }, [filteredRT]);
+
+  const filteredAgama = useMemo(() => {
+    const result: Record<string, number> = {};
+
+    filteredRT.forEach((rt) => {
+      Object.entries(rt.agama || {}).forEach(
+        ([label, jumlah]) => {
+          result[label] =
+            (result[label] || 0) + jumlah;
+        }
+      );
+    });
+
+    return result;
+  }, [filteredRT]);
+
+  const filteredPekerjaan = useMemo(() => {
+    const result: Record<string, number> = {};
+
+    filteredRT.forEach((rt) => {
+      Object.entries(
+        rt.pekerjaan || {}
+      ).forEach(([label, jumlah]) => {
+        result[label] =
+          (result[label] || 0) + jumlah;
+      });
+    });
+
+    return result;
+  }, [filteredRT]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-2xl border bg-white p-8 text-center shadow-sm">
+            Memuat Dashboard Multi-RT...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+            <div className="font-black text-red-700">
+              Dashboard gagal dimuat
+            </div>
+
+            <div className="mt-2 text-sm text-red-600">
+              {error}
+            </div>
+
+            <button
+              onClick={loadDashboard}
+              className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const total = data?.total || {};
+
+  return (
+    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+
+        <div className="mb-6 rounded-2xl bg-blue-700 p-6 text-white shadow-sm">
+          <div className="text-2xl font-black">
+            Dashboard Multi-RT
+          </div>
+
+          <div className="mt-1 text-sm text-blue-100">
+            Rekapitulasi data KK dan warga seluruh RT
+          </div>
+
+          <div className="mt-3 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs font-bold">
+            KHUSUS SUPERADMIN
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card
+            title="Total RT"
+            value={
+              selectedRT.length === 0 &&
+              selectedDesa.length === 0
+                ? total.totalRT || 0
+                : filteredRT.length
+            }
+            description="RT yang ditampilkan"
+          />
+
+          <Card
+            title="Total KK"
+            value={
+              selectedRT.length === 0 &&
+              selectedDesa.length === 0
+                ? total.totalKK || 0
+                : filteredSummary.totalKK
+            }
+            description="Kartu keluarga"
+          />
+
+          <Card
+            title="Total Warga"
+            value={
+              selectedRT.length === 0 &&
+              selectedDesa.length === 0
+                ? total.totalWarga || 0
+                : filteredSummary.totalWarga
+            }
+            description="Seluruh warga"
+          />
+
+          <Card
+            title="Pemilih Potensial"
+            value={
+              selectedRT.length === 0 &&
+              selectedDesa.length === 0
+                ? total.pemilihPotensial || 0
+                : filteredSummary.pemilih
+            }
+            description={`Usia ${data?.batasUsiaPemilih || 17} tahun ke atas`}
+          />
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm text-slate-500">
+            Data yang sedang ditampilkan
+          </div>
+
+          <div className="mt-2 text-lg font-black text-slate-900">
+            {filteredRT.length} RT
+            <span className="mx-2 text-slate-300">
+              |
+            </span>
+            {filteredSummary.totalKK.toLocaleString(
+              "id-ID"
+            )} KK
+            <span className="mx-2 text-slate-300">
+              |
+            </span>
+            {filteredSummary.totalWarga.toLocaleString(
+              "id-ID"
+            )} warga
+            <span className="mx-2 text-slate-300">
+              |
+            </span>
+            {filteredSummary.pemilih.toLocaleString(
+              "id-ID"
+            )} pemilih
+          </div>
+        </div>
+
+      </div>
+    </main>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -22,6 +22,18 @@ const formatTanggal = (value: string) =>
   }).format(new Date(value));
 
 export default function KegiatanPage() {
+  function apiHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = { ...(extra || {}) };
+    const role = localStorage.getItem("rt_role");
+    const activeRT = localStorage.getItem("rt_superadmin_active");
+
+    if (role === "superadmin" && activeRT) {
+      headers["x-rt-unit-id"] = activeRT;
+    }
+
+    return headers;
+  }
+
   const router = useRouter();
 
   const [rows, setRows] = useState<Kegiatan[]>([]);
@@ -43,6 +55,8 @@ export default function KegiatanPage() {
     try {
       const response = await fetch("/api/kegiatan", {
         cache: "no-store",
+        credentials: "include",
+        headers: apiHeaders(),
       });
 
       const data = await response.json();
@@ -122,7 +136,9 @@ export default function KegiatanPage() {
         method: editing ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
+          ...apiHeaders(),
         },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 
@@ -167,7 +183,8 @@ export default function KegiatanPage() {
         `/api/kegiatan?id=${encodeURIComponent(id)}`,
         {
           method: "DELETE",
-        }
+          credentials: "include",
+          headers: apiHeaders(),        }
       );
 
       const data = await response.json();
@@ -424,6 +441,13 @@ export default function KegiatanPage() {
     </main>
   );
 }
+
+
+
+
+
+
+
 
 
 

@@ -1,25 +1,24 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
-import { getRTContext } from "@/app/lib/auth/rt-context";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const context = await getRTContext(req);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
     const session = await getSession();
 
     if (!session) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
     }
 
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
     const rows = await prisma.kK.findMany({
-      where: { rTUnitId },
+      where: { rTUnitId: session.rTUnitId },
       include: {
         warga: {
           orderBy: { nama: "asc" },
@@ -51,17 +50,17 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const context = await getRTContext(req);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
     const session = await getSession();
 
     if (!session) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -86,7 +85,7 @@ export async function POST(req: Request) {
       rw: body.rw ? String(body.rw).trim() : null,
       statusTinggal: body.statusTinggal || "TETAP",
       nomorHP: body.nomorHP ? String(body.nomorHP).trim() : null,
-      rTUnitId,
+      rTUnitId: session.rTUnitId,
     };
 
     if (body.id) {
@@ -103,7 +102,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (targetKK.rTUnitId !== rTUnitId) {
+      if (targetKK.rTUnitId !== session.rTUnitId) {
         return NextResponse.json(
           { error: "KK tersebut bukan milik RT Anda." },
           { status: 403 }
@@ -113,7 +112,7 @@ export async function POST(req: Request) {
       const duplicate = await prisma.kK.findFirst({
         where: {
           nomorKK,
-          rTUnitId,
+          rTUnitId: session.rTUnitId,
           NOT: { id },
         },
       });
@@ -136,7 +135,7 @@ export async function POST(req: Request) {
     const duplicate = await prisma.kK.findFirst({
       where: {
         nomorKK,
-        rTUnitId,
+        rTUnitId: session.rTUnitId,
       },
     });
 
@@ -169,17 +168,17 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const context = await getRTContext(req);
-
-    if (context.response) {
-      return context.response;
-    }
-
-    const rTUnitId = context.rTUnitId!;
     const session = await getSession();
 
     if (!session) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(req.url);
@@ -208,7 +207,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    if (kk.rTUnitId !== rTUnitId) {
+    if (kk.rTUnitId !== session.rTUnitId) {
       return NextResponse.json(
         { error: "KK tersebut bukan milik RT Anda." },
         { status: 403 }

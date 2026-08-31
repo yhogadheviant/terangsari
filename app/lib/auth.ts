@@ -15,8 +15,18 @@ export const roleLabels: Record<Role, string> = {
 
 export const permissions: Record<Role, string[]> = {
   superadmin: [
-    "superadmin",
-  ],
+  "superadmin",
+  "kk",
+  "warga",
+  "usia",
+  "kas",
+  "taktis",
+  "iuran",
+  "pengumuman",
+  "kegiatan",
+  "laporan",
+  "pengaturan",
+],
 
   ketua: [
     "kk",

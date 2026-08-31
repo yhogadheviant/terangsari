@@ -156,33 +156,20 @@ export default function Home() {
 
   async function logout() {
     try {
-      const response = await fetch("/api/auth/logout", {
+      await fetch("/api/auth/logout", {
         method: "POST",
-        credentials: "include",
-        cache: "no-store",
       });
-
-      if (!response.ok) {
-        console.error(
-          "HOME_LOGOUT_HTTP_ERROR:",
-          response.status
-        );
-      }
     } catch (error) {
       console.error("HOME_LOGOUT_ERROR:", error);
     } finally {
-      localStorage.removeItem("rt_role");
-      localStorage.removeItem("rt_username");
       localStorage.removeItem("rt11_userId");
       localStorage.removeItem("rt11_username");
-      localStorage.removeItem("rt_rtUnit");
-      localStorage.removeItem("rt_superadmin_active");
+setAuthenticated(false);
 
-      setAuthenticated(false);
-
-      window.location.replace("/");
+      window.location.href = "/";
     }
   }
+
   async function loadPengumuman() {
     try {
       const r = await fetch("/api/pengumuman", {
@@ -212,22 +199,11 @@ export default function Home() {
       setPengumuman([]);
     }
   }
+
   async function loadKegiatan() {
     try {
       const r = await fetch("/api/kegiatan", {
         cache: "no-store",
-        credentials: "include",
-        headers: (() => {
-          const headers: Record<string, string> = {};
-          const role = localStorage.getItem("rt_role");
-          const activeRT = localStorage.getItem("rt_superadmin_active");
-
-          if (role === "superadmin" && activeRT) {
-            headers["x-rt-unit-id"] = activeRT;
-          }
-
-          return headers;
-        })(),
       });
 
       const d = await r.json();
@@ -576,9 +552,6 @@ export default function Home() {
     </div>
   );
 }
-
-
-
 
 
 

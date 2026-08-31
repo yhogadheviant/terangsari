@@ -64,6 +64,21 @@ export default function Page() {
   const [busy,setBusy] = useState(false);
   const [editingId,setEditingId] = useState<string|null>(null);
 
+  function apiHeaders(extra?: Record<string,string>) {
+    const headers: Record<string,string> = {
+      ...(extra || {}),
+    };
+
+    const role = localStorage.getItem("rt_role");
+    const activeRT = localStorage.getItem("rt_superadmin_active");
+
+    if (role === "superadmin" && activeRT) {
+      headers["x-rt-unit-id"] = activeRT;
+    }
+
+    return headers;
+  }
+
   const previewTop = useRef<HTMLDivElement>(null);
   const previewBody = useRef<HTMLDivElement>(null);
   const previewLeft = useRef<HTMLDivElement>(null);
@@ -75,7 +90,10 @@ export default function Page() {
   const listLeftInner = useRef<HTMLDivElement>(null);
 
   async function load() {
-    const r = await fetch("/api/warga", { cache:"no-store" });
+    const r = await fetch("/api/warga", {
+      cache: "no-store",
+      headers: apiHeaders(),
+    });
     if (r.ok) setData(await r.json());
   }
 
@@ -709,6 +727,8 @@ function Select({
     </select>
   </label>;
 }
+
+
 
 
 

@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function getPeriodRange(periode: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(periode);
@@ -31,17 +32,16 @@ function jsonError(error: string, status: number) {
 
 export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) return context.response;
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
+    const rTUnitId = context.rTUnitId!;
+    const session = context.session;
 
     const rtUnit = await prisma.rTUnit.findUnique({
       where: {
-        id: session.rTUnitId,
+        id: rTUnitId,
       },
       select: {
         id: true,
@@ -90,33 +90,33 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       prisma.kK.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           jenisKelamin: "LAKI_LAKI",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           jenisKelamin: "PEREMPUAN",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 0,
             lte: 4,
@@ -126,7 +126,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 5,
             lte: 9,
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 10,
             lte: 14,
@@ -146,7 +146,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 15,
             lte: 19,
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 20,
             lte: 59,
@@ -166,7 +166,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 60,
           },
@@ -175,35 +175,35 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "TETAP",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "SEWA",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "KONTRAK",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "MENUMPANG",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "LAINNYA",
         },
       }),
@@ -218,7 +218,7 @@ export async function GET(request: Request) {
 
     const iuran = await prisma.iuran.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
         periode,
       },
 
@@ -289,7 +289,7 @@ export async function GET(request: Request) {
     const danaTaktis =
       await prisma.tacticalFundTransaction.findMany({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           date: {
             gte: start,
             lt: end,
@@ -317,7 +317,7 @@ export async function GET(request: Request) {
 
     const kas = await prisma.kasTransaction.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
         date: {
           gte: start,
           lt: end,
@@ -470,6 +470,7 @@ export async function GET(request: Request) {
     );
   }
 }
+
 
 
 

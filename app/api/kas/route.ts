@@ -2,6 +2,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
 import { requireRole } from "@/app/lib/auth/authorization";
+import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function clean(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -60,13 +61,13 @@ function jsonError(error: string, status: number) {
 
 export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
-
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    if (context.response) {
+      return context.response;
     }
+
+    const rTUnitId = context.rTUnitId!;
 
     const url = new URL(request.url);
 
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
 
     const rows = await prisma.kasTransaction.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
         date: {
           gte: start,
           lt: end,
@@ -133,8 +134,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const context = await getRTContext(request);
+
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
+
     const session = await getSession();
-    const denied = requireRole(session, ["KETUA", "BENDAHARA"]);
+    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
 
     if (denied) return denied;
 
@@ -167,7 +174,7 @@ export async function POST(request: Request) {
         category,
         description,
         date,
-        rTUnitId: session!.rTUnitId!,
+        rTUnitId: rTUnitId,
       },
     });
 
@@ -197,8 +204,14 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const context = await getRTContext(request);
+
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
+
     const session = await getSession();
-    const denied = requireRole(session, ["KETUA", "BENDAHARA"]);
+    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
 
     if (denied) return denied;
 
@@ -212,7 +225,7 @@ export async function PATCH(request: Request) {
     const existing = await prisma.kasTransaction.findFirst({
       where: {
         id,
-        rTUnitId: session!.rTUnitId!,
+        rTUnitId: rTUnitId,
       },
     });
 
@@ -281,8 +294,14 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const context = await getRTContext(request);
+
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
+
     const session = await getSession();
-    const denied = requireRole(session, ["KETUA", "BENDAHARA"]);
+    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
 
     if (denied) return denied;
 
@@ -296,7 +315,7 @@ export async function DELETE(request: Request) {
     const existing = await prisma.kasTransaction.findFirst({
       where: {
         id,
-        rTUnitId: session!.rTUnitId!,
+        rTUnitId: rTUnitId,
       },
     });
 
@@ -326,5 +345,14 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+
+
+
+
+
+
+
+
 
 

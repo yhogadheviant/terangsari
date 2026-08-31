@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -104,14 +105,15 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const context = await getRTContext(request);
+
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
+
     const session = await getSession();
 
     if (!session) return jsonError("Belum login.", 401);
-
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
-
     const body = await request.json();
     const id = String(body.id || "").trim();
 
@@ -125,7 +127,7 @@ export async function PATCH(request: Request) {
     const existing = await prisma.pengumuman.findFirst({
       where: {
         id,
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
       },
     });
 
@@ -187,13 +189,15 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const context = await getRTContext(request);
+
+    if (context.response) return context.response;
+
+    const rTUnitId = context.rTUnitId!;
+
     const session = await getSession();
 
     if (!session) return jsonError("Belum login.", 401);
-
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
-    }
 
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
@@ -208,7 +212,7 @@ export async function DELETE(request: Request) {
     const existing = await prisma.pengumuman.findFirst({
       where: {
         id,
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
       },
     });
 
@@ -236,6 +240,17 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

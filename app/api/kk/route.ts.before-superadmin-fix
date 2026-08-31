@@ -18,6 +18,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
     }
 
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
+    }
+
     const rows = await prisma.kK.findMany({
       where: { rTUnitId },
       include: {
@@ -62,6 +69,13 @@ export async function POST(req: Request) {
 
     if (!session) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -180,6 +194,13 @@ export async function DELETE(req: Request) {
 
     if (!session) {
       return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    }
+
+    if (!session.rTUnitId) {
+      return NextResponse.json(
+        { error: "Akun belum memiliki RT." },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(req.url);

@@ -102,6 +102,21 @@ const rp = (value: number) =>
 export default function LaporanPage() {
   const router = useRouter();
 
+  function apiHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = {
+      ...(extra || {}),
+    };
+
+    const role = localStorage.getItem("rt_role");
+    const activeRT = localStorage.getItem("rt_superadmin_active");
+
+    if (role === "superadmin" && activeRT) {
+      headers["x-rt-unit-id"] = activeRT;
+    }
+
+    return headers;
+  }
+
   const [rtUnit, setRtUnit] =
     useState<RtUnitInfo | null>(null);
 
@@ -118,6 +133,15 @@ export default function LaporanPage() {
   const [loading, setLoading] =
     useState(true);
 
+  // =====================================================
+  // REKAP DATA SUPERADMIN
+  // =====================================================
+
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [superadminRtId, setSuperadminRtId] = useState("all");
+  const [superadminKkId, setSuperadminKkId] = useState("all");
+  const [superadminData, setSuperadminData] = useState<any>(null);
+  const [superadminLoading, setSuperadminLoading] = useState(false);
   async function loadRtUnit() {
     try {
       const response = await fetch("/api/auth/me", {
@@ -147,6 +171,99 @@ export default function LaporanPage() {
     }
   }
 
+  async function loadSuperadminData() {
+    try {
+      setSuperadminLoading(true);
+
+      const response = await fetch(
+        "/api/superadmin/dashboard",
+        {
+          cache: "no-store",
+          credentials: "include",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          "Gagal mengambil rekap Superadmin."
+        );
+      }
+
+      // Normalisasi data agar export tetap aman.
+      const rt = Array.isArray(data.rt)
+        ? data.rt
+        : [];
+
+      const totalUsia = {
+        "0-5": 0,
+        "6-12": 0,
+        "13-17": 0,
+        "18-25": 0,
+        "26-40": 0,
+        "41-59": 0,
+        "60+": 0,
+        "Tidak diketahui": 0,
+      };
+
+      let totalKK = 0;
+      let totalWarga = 0;
+      let lakiLaki = 0;
+      let perempuan = 0;
+      let pemilih = 0;
+
+      for (const unit of rt) {
+        totalKK += Number(unit.totalKK || 0);
+        totalWarga += Number(unit.totalWarga || 0);
+        lakiLaki += Number(
+          unit.jenisKelamin?.lakiLaki || 0
+        );
+        perempuan += Number(
+          unit.jenisKelamin?.perempuan || 0
+        );
+        pemilih += Number(
+          unit.pemilihPotensial || 0
+        );
+
+        if (unit.usia) {
+          for (const key of Object.keys(totalUsia)) {
+            totalUsia[key as keyof typeof totalUsia] +=
+              Number(unit.usia[key] || 0);
+          }
+        }
+      }
+
+      const normalized = {
+        ...data,
+        rt,
+        total: {
+          ...data.total,
+          totalRT: rt.length,
+          totalKK,
+          totalWarga,
+          lakiLaki,
+          perempuan,
+          pemilih,
+          usia: totalUsia,
+        },
+      };
+
+      setSuperadminData(normalized);
+      setIsSuperadmin(true);
+    } catch (error) {
+      console.error(
+        "LOAD_SUPERADMIN_REPORT_ERROR:",
+        error
+      );
+
+      setSuperadminData(null);
+    } finally {
+      setSuperadminLoading(false);
+    }
+  }
+
   async function load() {
     try {
       setLoading(true);
@@ -156,6 +273,8 @@ export default function LaporanPage() {
           `/api/laporan?periode=${periode}`,
           {
             cache: "no-store",
+            credentials: "include",
+            headers: apiHeaders(),
           }
         );
 
@@ -202,6 +321,7 @@ export default function LaporanPage() {
     if (
       !role ||
       ![
+        "superadmin",
         "ketua",
         "sekretaris",
         "bendahara",
@@ -954,6 +1074,1026 @@ const pageCount = doc.getNumberOfPages();
     );
   }
 
+  // =====================================================
+  // EXPORT REKAP SUPERADMIN - EXCEL
+  // =====================================================
+
+  // =====================================================
+  // DATA SUPERADMIN SESUAI FILTER RT / KK
+  // =====================================================
+
+  const filteredSuperadminData = useMemo(() => {
+    if (!superadminData) return null;
+
+    let units = Array.isArray(superadminData.rt)
+      ? superadminData.rt
+      : [];
+
+    if (superadminRtId !== "all") {
+      units = units.filter(
+        (rt: any) => rt.id === superadminRtId
+      );
+    }
+
+    const selectedKK: any[] = [];
+
+    for (const rt of units) {
+      for (const kk of rt.kks || []) {
+        if (
+          superadminKkId === "all" ||
+          kk.id === superadminKkId
+        ) {
+          selectedKK.push({
+            ...kk,
+            kodeRT: rt.kodeRT,
+            kodeRW: rt.kodeRW,
+            namaRT: rt.namaRT,
+          });
+        }
+      }
+    }
+
+    const warga: any[] = [];
+
+    for (const kk of selectedKK) {
+      for (const w of kk.warga || []) {
+        warga.push({
+          ...w,
+          nomorKK: w.nomorKK ?? kk.nomorKK,
+          kodeRT: kk.kodeRT,
+          kodeRW: kk.kodeRW,
+          namaRT: kk.namaRT,
+        });
+      }
+    }
+
+    const usia: Record<string, number> = {
+      "0-5": 0,
+      "6-12": 0,
+      "13-17": 0,
+      "18-25": 0,
+      "26-40": 0,
+      "41-59": 0,
+      "60+": 0,
+      "Tidak diketahui": 0,
+    };
+
+    let lakiLaki = 0;
+    let perempuan = 0;
+    let pemilih = 0;
+
+    for (const w of warga) {
+      if (w.jenisKelamin === "LAKI_LAKI") {
+        lakiLaki++;
+      }
+
+      if (w.jenisKelamin === "PEREMPUAN") {
+        perempuan++;
+      }
+
+      const umur =
+        w.tanggalLahir
+          ? (() => {
+              const lahir = new Date(w.tanggalLahir);
+              const sekarang = new Date();
+
+              let age =
+                sekarang.getFullYear() -
+                lahir.getFullYear();
+
+              const bulan =
+                sekarang.getMonth() -
+                lahir.getMonth();
+
+              if (
+                bulan < 0 ||
+                (
+                  bulan === 0 &&
+                  sekarang.getDate() < lahir.getDate()
+                )
+              ) {
+                age--;
+              }
+
+              return age;
+            })()
+          : Number.isFinite(Number(w.usia))
+            ? Number(w.usia)
+            : null;
+
+      let group = "Tidak diketahui";
+
+      if (umur !== null) {
+        if (umur <= 5) group = "0-5";
+        else if (umur <= 12) group = "6-12";
+        else if (umur <= 17) group = "13-17";
+        else if (umur <= 25) group = "18-25";
+        else if (umur <= 40) group = "26-40";
+        else if (umur <= 59) group = "41-59";
+        else group = "60+";
+
+        if (umur >= 17) {
+          pemilih++;
+        }
+      }
+
+      usia[group]++;
+    }
+
+    const rekapRT = units.map((rt: any) => {
+      const rtKK = selectedKK.filter(
+        (kk) => kk.kodeRT === rt.kodeRT
+      );
+
+      const rtWarga = warga.filter(
+        (w) => w.kodeRT === rt.kodeRT
+      );
+
+      return {
+        ...rt,
+        totalKK: rtKK.length,
+        totalWarga: rtWarga.length,
+        jenisKelamin: {
+          lakiLaki: rtWarga.filter(
+            (w) =>
+              w.jenisKelamin === "LAKI_LAKI"
+          ).length,
+          perempuan: rtWarga.filter(
+            (w) =>
+              w.jenisKelamin === "PEREMPUAN"
+          ).length,
+        },
+        pemilihPotensial: rtWarga.filter(
+          (w) => {
+            const umur =
+              Number(w.usia);
+
+            return Number.isFinite(umur) &&
+              umur >= 17;
+          }
+        ).length,
+        kks: rtKK,
+        daftarPemilih: rtWarga.filter(
+          (w) => {
+            const umur =
+              Number(w.usia);
+
+            return Number.isFinite(umur) &&
+              umur >= 17;
+          }
+        ),
+      };
+    });
+
+    return {
+      ...superadminData,
+      rt: rekapRT,
+      total: {
+        ...superadminData.total,
+        totalRT: units.length,
+        totalKK: selectedKK.length,
+        totalWarga: warga.length,
+        lakiLaki,
+        perempuan,
+        pemilih: pemilih,
+        pemilihPotensial: pemilih,
+        usia,
+      },
+    };
+  }, [
+    superadminData,
+    superadminRtId,
+    superadminKkId,
+  ]);
+  function exportSuperadminExcel() {
+    if (!filteredSuperadminData) {
+      alert("Data rekap Superadmin belum tersedia.");
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    const total = filteredSuperadminData.total;
+    const rtData = filteredSuperadminData.rt || [];
+
+    // -----------------------------------------------------
+    // SHEET 1 - REKAP UTAMA
+    // -----------------------------------------------------
+
+    const ringkasan = [
+      ["LAPORAN REKAP DATA WARGA - SUPERADMIN"],
+      [],
+      ["Filter RT", superadminRtId === "all" ? "Semua RT" : superadminRtId],
+      ["Filter KK", superadminKkId === "all" ? "Semua KK" : superadminKkId],
+      [],
+      ["REKAP KESELURUHAN"],
+      ["Total RT", total.totalRT],
+      ["Total KK", total.totalKK],
+      ["Total Warga", total.totalWarga],
+      ["Laki-laki", total.lakiLaki],
+      ["Perempuan", total.perempuan],
+      ["Pemilih >= 17 Tahun", total.pemilih],
+      [],
+      ["KELOMPOK USIA"],
+      ["0-5", total.usia["0-5"]],
+      ["6-12", total.usia["6-12"]],
+      ["13-17", total.usia["13-17"]],
+      ["18-25", total.usia["18-25"]],
+      ["26-40", total.usia["26-40"]],
+      ["41-59", total.usia["41-59"]],
+      ["60+", total.usia["60+"]],
+      ["Tidak diketahui", total.usia["Tidak diketahui"]],
+    ];
+
+    const sheetRingkasan =
+      XLSX.utils.aoa_to_sheet(ringkasan);
+
+    sheetRingkasan["!cols"] = [
+      { wch: 30 },
+      { wch: 25 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetRingkasan,
+      "Rekap Utama"
+    );
+
+    // -----------------------------------------------------
+    // SHEET 2 - REKAP PER RT
+    // -----------------------------------------------------
+
+    const rekapRT = [
+      [
+        "No",
+        "RT",
+        "RW",
+        "Nama RT",
+        "Total KK",
+        "Total Warga",
+        "Laki-laki",
+        "Perempuan",
+        "Pemilih >=17",
+      ],
+      ...rtData.map((rt: any, index: number) => [
+        index + 1,
+        rt.kodeRT,
+        rt.kodeRW,
+        rt.namaRT,
+        rt.totalKK,
+        rt.totalWarga,
+        rt.lakiLaki,
+        rt.perempuan,
+        rt.pemilih,
+      ]),
+      [
+        "",
+        "",
+        "",
+        "TOTAL",
+        total.totalKK,
+        total.totalWarga,
+        total.lakiLaki,
+        total.perempuan,
+        total.pemilih,
+      ],
+    ];
+
+    const sheetRT =
+      XLSX.utils.aoa_to_sheet(rekapRT);
+
+    sheetRT["!cols"] = [
+      { wch: 7 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 32 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 18 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetRT,
+      "Rekap Per RT"
+    );
+
+    // -----------------------------------------------------
+    // SHEET 3 - DAFTAR KK
+    // -----------------------------------------------------
+
+    const kkRows: any[][] = [
+      [
+        "No",
+        "RT",
+        "RW",
+        "Nomor KK",
+        "Kepala Keluarga",
+        "Alamat",
+        "Status Tinggal",
+        "Jumlah Anggota",
+      ],
+    ];
+
+    let kkNo = 1;
+
+    for (const rt of rtData) {
+      for (const kk of rt.kks || []) {
+        kkRows.push([
+          kkNo++,
+          rt.kodeRT,
+          rt.kodeRW,
+          String(kk.nomorKK ?? ""),
+          kk.kepalaKeluarga ?? "",
+          kk.alamat ?? "",
+          kk.statusTinggal ?? "",
+          Array.isArray(kk.warga)
+            ? kk.warga.length
+            : 0,
+        ]);
+      }
+    }
+
+    const sheetKK =
+      XLSX.utils.aoa_to_sheet(kkRows);
+
+    sheetKK["!cols"] = [
+      { wch: 7 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 45 },
+      { wch: 20 },
+      { wch: 17 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetKK,
+      "Daftar KK"
+    );
+
+    // -----------------------------------------------------
+    // SHEET 4 - SELURUH WARGA
+    // -----------------------------------------------------
+
+    const wargaRows: any[][] = [
+      [
+        "No",
+        "RT",
+        "RW",
+        "NIK",
+        "Nama",
+        "Nomor KK",
+        "Jenis Kelamin",
+        "Hubungan Keluarga",
+        "Tempat Lahir",
+        "Tanggal Lahir",
+        "Usia",
+        "Agama",
+        "Pendidikan",
+        "Pekerjaan",
+        "Status Kawin",
+        "Status Tinggal",
+        "Alamat",
+      ],
+    ];
+
+    let wargaNo = 1;
+
+    for (const rt of rtData) {
+      for (const kk of rt.kks || []) {
+        for (const w of kk.warga || []) {
+          const tanggalLahir = w.tanggalLahir
+            ? new Date(w.tanggalLahir)
+                .toLocaleDateString("id-ID")
+            : "";
+
+          wargaRows.push([
+            wargaNo++,
+            rt.kodeRT,
+            rt.kodeRW,
+            String(w.nik ?? ""),
+            w.nama ?? "",
+            String(w.nomorKK ?? kk.nomorKK ?? ""),
+            w.jenisKelamin ?? "",
+            w.hubunganKeluarga ?? "",
+            w.tempatLahir ?? "",
+            tanggalLahir,
+            w.usia ?? "",
+            w.agama ?? "",
+            w.pendidikan ?? "",
+            w.pekerjaan ?? "",
+            w.statusKawin ?? "",
+            w.statusTinggal ?? "",
+            w.alamat ?? "",
+          ]);
+        }
+      }
+    }
+
+    const sheetWarga =
+      XLSX.utils.aoa_to_sheet(wargaRows);
+
+    sheetWarga["!cols"] = [
+      { wch: 7 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 8 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 40 },
+    ];
+
+    // Paksa NIK dan Nomor KK menjadi TEXT.
+    for (let row = 2; row <= wargaRows.length; row++) {
+      const nik = sheetWarga[`D${row}`];
+      const nomorKK = sheetWarga[`F${row}`];
+
+      if (nik) {
+        nik.t = "s";
+        nik.v = String(nik.v ?? "");
+      }
+
+      if (nomorKK) {
+        nomorKK.t = "s";
+        nomorKK.v = String(nomorKK.v ?? "");
+      }
+    }
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetWarga,
+      "Daftar Warga"
+    );
+
+    // -----------------------------------------------------
+    // SHEET 5 - KELOMPOK USIA
+    // -----------------------------------------------------
+
+    const usiaRows = [
+      ["Kelompok Usia", "Jumlah"],
+      ["0-5", total.usia["0-5"]],
+      ["6-12", total.usia["6-12"]],
+      ["13-17", total.usia["13-17"]],
+      ["18-25", total.usia["18-25"]],
+      ["26-40", total.usia["26-40"]],
+      ["41-59", total.usia["41-59"]],
+      ["60+", total.usia["60+"]],
+      ["Tidak diketahui", total.usia["Tidak diketahui"]],
+    ];
+
+    const sheetUsia =
+      XLSX.utils.aoa_to_sheet(usiaRows);
+
+    sheetUsia["!cols"] = [
+      { wch: 22 },
+      { wch: 15 },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetUsia,
+      "Kelompok Usia"
+    );
+
+    // -----------------------------------------------------
+    // SHEET 6 - DAFTAR PEMILIH
+    // -----------------------------------------------------
+
+    const pemilihRows: any[][] = [
+      [
+        "No",
+        "RT",
+        "RW",
+        "NIK",
+        "Nama",
+        "Nomor KK",
+        "Jenis Kelamin",
+        "Umur",
+        "Alamat",
+      ],
+    ];
+
+    let pemilihNo = 1;
+
+    for (const rt of rtData) {
+      for (const w of rt.daftarPemilih || []) {
+        pemilihRows.push([
+          pemilihNo++,
+          rt.kodeRT,
+          rt.kodeRW,
+          String(w.nik ?? ""),
+          w.nama ?? "",
+          String(w.nomorKK ?? ""),
+          w.jenisKelamin ?? "",
+          w.umur ?? "",
+          w.alamat ?? "",
+        ]);
+      }
+    }
+
+    const sheetPemilih =
+      XLSX.utils.aoa_to_sheet(pemilihRows);
+
+    sheetPemilih["!cols"] = [
+      { wch: 7 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 10 },
+      { wch: 40 },
+    ];
+
+    for (let row = 2; row <= pemilihRows.length; row++) {
+      const nik = sheetPemilih[`D${row}`];
+      const nomorKK = sheetPemilih[`F${row}`];
+
+      if (nik) {
+        nik.t = "s";
+        nik.v = String(nik.v ?? "");
+      }
+
+      if (nomorKK) {
+        nomorKK.t = "s";
+        nomorKK.v = String(nomorKK.v ?? "");
+      }
+    }
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetPemilih,
+      "Daftar Pemilih"
+    );
+
+    XLSX.writeFile(
+      wb,
+      `rekap-superadmin-${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`
+    );
+  }
+
+  // =====================================================
+  // EXPORT REKAP SUPERADMIN - PDF
+  // =====================================================
+
+  function exportSuperadminPDF() {
+    if (!filteredSuperadminData) {
+      alert("Data rekap Superadmin belum tersedia.");
+      return;
+    }
+
+    const doc = new jsPDF(
+      "l",
+      "mm",
+      "a4"
+    );
+
+    const total = filteredSuperadminData.total;
+    const rtData = filteredSuperadminData.rt || [];
+
+    let y = 15;
+
+    const margin = 10;
+
+    const ensureSpace = (height = 25) => {
+      if (y + height > 195) {
+        doc.addPage();
+        y = 15;
+      }
+    };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+
+    doc.text(
+      "LAPORAN REKAP DATA WARGA - SUPERADMIN",
+      148,
+      y,
+      { align: "center" }
+    );
+
+    y += 7;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+
+    doc.text(
+      `Filter RT: ${
+        superadminRtId === "all"
+          ? "Semua RT"
+          : superadminRtId
+      }`,
+      margin,
+      y
+    );
+
+    doc.text(
+      `Filter KK: ${
+        superadminKkId === "all"
+          ? "Semua KK"
+          : superadminKkId
+      }`,
+      100,
+      y
+    );
+
+    y += 8;
+
+    // -----------------------------------------------------
+    // REKAP UTAMA
+    // -----------------------------------------------------
+
+    ensureSpace(45);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(
+      "A. REKAP KESELURUHAN",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "Total RT",
+        "Total KK",
+        "Total Warga",
+        "Laki-laki",
+        "Perempuan",
+        "Pemilih >=17",
+      ]],
+      body: [[
+        total.totalRT,
+        total.totalKK,
+        total.totalWarga,
+        total.lakiLaki,
+        total.perempuan,
+        total.pemilih,
+      ]],
+      theme: "grid",
+      styles: {
+        fontSize: 9,
+        halign: "center",
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    y =
+      ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+
+    // -----------------------------------------------------
+    // KELOMPOK USIA
+    // -----------------------------------------------------
+
+    ensureSpace(55);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+
+    doc.text(
+      "B. KELOMPOK USIA",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Kelompok Usia", "Jumlah"]],
+      body: [
+        ["0-5", total.usia["0-5"]],
+        ["6-12", total.usia["6-12"]],
+        ["13-17", total.usia["13-17"]],
+        ["18-25", total.usia["18-25"]],
+        ["26-40", total.usia["26-40"]],
+        ["41-59", total.usia["41-59"]],
+        ["60+", total.usia["60+"]],
+        [
+          "Tidak diketahui",
+          total.usia["Tidak diketahui"],
+        ],
+      ],
+      theme: "grid",
+      styles: {
+        fontSize: 9,
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    y =
+      ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+
+    // -----------------------------------------------------
+    // REKAP PER RT
+    // -----------------------------------------------------
+
+    ensureSpace(50);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+
+    doc.text(
+      "C. REKAP PER RT",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "No",
+        "RT/RW",
+        "Nama RT",
+        "KK",
+        "Warga",
+        "L",
+        "P",
+        "Pemilih",
+      ]],
+      body: rtData.map(
+        (rt: any, index: number) => [
+          index + 1,
+          `${rt.kodeRT}/${rt.kodeRW}`,
+          rt.namaRT,
+          rt.totalKK,
+          rt.totalWarga,
+          rt.lakiLaki,
+          rt.perempuan,
+          rt.pemilih,
+        ]
+      ),
+      theme: "grid",
+      styles: {
+        fontSize: 8,
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    y =
+      ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+
+    // -----------------------------------------------------
+    // DAFTAR KK
+    // -----------------------------------------------------
+
+    const allKK: any[] = [];
+
+    for (const rt of rtData) {
+      for (const kk of rt.kks || []) {
+        allKK.push({
+          ...kk,
+          kodeRT: rt.kodeRT,
+          kodeRW: rt.kodeRW,
+        });
+      }
+    }
+
+    ensureSpace(60);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+
+    doc.text(
+      "D. DAFTAR KK",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "No",
+        "RT/RW",
+        "Nomor KK",
+        "Kepala Keluarga",
+        "Alamat",
+        "Anggota",
+      ]],
+      body: allKK.map(
+        (kk: any, index: number) => [
+          index + 1,
+          `${kk.kodeRT}/${kk.kodeRW}`,
+          String(kk.nomorKK ?? ""),
+          kk.kepalaKeluarga ?? "",
+          kk.alamat ?? "",
+          Array.isArray(kk.warga)
+            ? kk.warga.length
+            : 0,
+        ]
+      ),
+      theme: "grid",
+      styles: {
+        fontSize: 7,
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    y =
+      ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+
+    // -----------------------------------------------------
+    // DAFTAR WARGA
+    // -----------------------------------------------------
+
+    const allWarga: any[] = [];
+
+    for (const rt of rtData) {
+      for (const kk of rt.kks || []) {
+        for (const w of kk.warga || []) {
+          allWarga.push({
+            ...w,
+            kodeRT: rt.kodeRT,
+            kodeRW: rt.kodeRW,
+          });
+        }
+      }
+    }
+
+    ensureSpace(70);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+
+    doc.text(
+      "E. DAFTAR SELURUH WARGA",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "No",
+        "RT",
+        "NIK",
+        "Nama",
+        "No. KK",
+        "L/P",
+        "Hubungan",
+        "Usia",
+      ]],
+      body: allWarga.map(
+        (w: any, index: number) => [
+          index + 1,
+          w.kodeRT,
+          String(w.nik ?? ""),
+          w.nama ?? "",
+          String(w.nomorKK ?? ""),
+          w.jenisKelamin === "LAKI_LAKI"
+            ? "L"
+            : w.jenisKelamin === "PEREMPUAN"
+              ? "P"
+              : "",
+          w.hubunganKeluarga ?? "",
+          w.usia ?? "",
+        ]
+      ),
+      theme: "grid",
+      styles: {
+        fontSize: 6.5,
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    y =
+      ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+
+    // -----------------------------------------------------
+    // DAFTAR PEMILIH
+    // -----------------------------------------------------
+
+    const allPemilih: any[] = [];
+
+    for (const rt of rtData) {
+      for (const w of rt.daftarPemilih || []) {
+        allPemilih.push({
+          ...w,
+          kodeRT: rt.kodeRT,
+          kodeRW: rt.kodeRW,
+        });
+      }
+    }
+
+    ensureSpace(65);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+
+    doc.text(
+      "F. DAFTAR PEMILIH POTENSIAL (>=17 TAHUN)",
+      margin,
+      y
+    );
+
+    y += 3;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "No",
+        "RT/RW",
+        "NIK",
+        "Nama",
+        "No. KK",
+        "L/P",
+        "Umur",
+      ]],
+      body: allPemilih.map(
+        (w: any, index: number) => [
+          index + 1,
+          `${w.kodeRT}/${w.kodeRW}`,
+          String(w.nik ?? ""),
+          w.nama ?? "",
+          String(w.nomorKK ?? ""),
+          w.jenisKelamin === "LAKI_LAKI"
+            ? "L"
+            : w.jenisKelamin === "PEREMPUAN"
+              ? "P"
+              : "",
+          w.umur ?? "",
+        ]
+      ),
+      theme: "grid",
+      styles: {
+        fontSize: 7,
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    });
+
+    const pageCount =
+      doc.getNumberOfPages();
+
+    for (
+      let page = 1;
+      page <= pageCount;
+      page++
+    ) {
+      doc.setPage(page);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+
+      doc.text(
+        `Rekap Data Warga Superadmin - Halaman ${page} dari ${pageCount}`,
+        148,
+        205,
+        { align: "center" }
+      );
+    }
+
+    doc.save(
+      `rekap-superadmin-${new Date()
+        .toISOString()
+        .slice(0, 10)}.pdf`
+    );
+  }
+
   if (loading || !report) {
     return (
       <main className="min-h-screen bg-slate-50 p-6">
@@ -1038,6 +2178,250 @@ const pageCount = doc.getNumberOfPages();
 
       <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
 
+        {/* =====================================================
+             REKAP DATA SUPERADMIN
+             ===================================================== */}
+
+        {isSuperadmin && superadminData && (
+          <section className="rounded-2xl border bg-white p-5 shadow-sm">
+
+            <div className="flex flex-col gap-4">
+
+              <div>
+                <h2 className="text-xl font-black">
+                  Rekap Data Semua Warga
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Filter dan cetak rekap data warga seluruh RT.
+                </p>
+              </div>
+
+              {/* FILTER RT & KK */}
+
+              <div className="grid gap-3 md:grid-cols-2">
+
+                <div>
+                  <label className="mb-1 block text-sm font-bold">
+                    Filter RT
+                  </label>
+
+                  <select
+                    value={superadminRtId}
+                    onChange={(e) => {
+                      setSuperadminRtId(e.target.value);
+                      setSuperadminKkId("all");
+                    }}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"
+                  >
+                    <option value="all">
+                      Semua RT
+                    </option>
+
+                    {(superadminData.rt || []).map(
+                      (rt: any) => (
+                        <option
+                          key={rt.id}
+                          value={rt.id}
+                        >
+                          RT {rt.kodeRT} / RW {rt.kodeRW}
+                        </option>
+                      )
+                    )}
+
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-bold">
+                    Filter KK
+                  </label>
+
+                  <select
+                    value={superadminKkId}
+                    onChange={(e) =>
+                      setSuperadminKkId(e.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"
+                  >
+
+                    <option value="all">
+                      Semua KK
+                    </option>
+
+                    {(superadminData.rt || [])
+                      .filter(
+                        (rt: any) =>
+                          superadminRtId === "all" ||
+                          rt.id === superadminRtId
+                      )
+                      .flatMap(
+                        (rt: any) =>
+                          (rt.kks || []).map(
+                            (kk: any) => (
+                              <option
+                                key={kk.id}
+                                value={kk.id}
+                              >
+                                RT {rt.kodeRT} - KK{" "}
+                                {kk.nomorKK}
+                                {kk.kepalaKeluarga
+                                  ? ` - ${kk.kepalaKeluarga}`
+                                  : ""}
+                              </option>
+                            )
+                          )
+                      )}
+
+                  </select>
+                </div>
+
+              </div>
+
+              {/* INFORMASI FILTER */}
+
+              <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm">
+
+                <span className="font-bold">
+                  Filter aktif:
+                </span>{" "}
+
+                {superadminRtId === "all"
+                  ? "Semua RT"
+                  : `RT terpilih: ${superadminData.rt?.find(
+                      (rt: any) =>
+                        rt.id === superadminRtId
+                    )?.kodeRT || superadminRtId}`}
+
+                {" • "}
+
+                {superadminKkId === "all"
+                  ? "Semua KK"
+                  : `KK terpilih: ${superadminKkId}`}
+
+              </div>
+
+              {/* TOTAL */}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+
+                <Card
+                  label="Total RT"
+                  value={
+                    filteredSuperadminData?.total?.totalRT || 0
+                  }
+                />
+
+                <Card
+                  label="Total KK"
+                  value={
+                    filteredSuperadminData?.total?.totalKK || 0
+                  }
+                />
+
+                <Card
+                  label="Total Warga"
+                  value={
+                    filteredSuperadminData?.total?.totalWarga || 0
+                  }
+                />
+
+                <Card
+                  label="Laki-laki"
+                  value={
+                    filteredSuperadminData?.total?.lakiLaki || 0
+                  }
+                />
+
+                <Card
+                  label="Perempuan"
+                  value={
+                    filteredSuperadminData?.total?.perempuan || 0
+                  }
+                />
+
+              </div>
+
+              {/* PEMILIH */}
+
+              <div className="rounded-xl border bg-slate-50 p-4">
+
+                <div className="text-sm font-bold">
+                  Daftar Pemilih Potensial
+                </div>
+
+                <div className="mt-1 text-3xl font-black">
+                  {filteredSuperadminData?.total?.pemilih || 0}
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  Usia{" "}
+                  {filteredSuperadminData?.batasUsiaPemilih || 17}
+                  {" "}tahun ke atas
+                </div>
+
+              </div>
+
+              {/* KELOMPOK USIA */}
+
+              <div>
+
+                <h3 className="text-lg font-black">
+                  Kelompok Usia
+                </h3>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
+
+                  {Object.entries(
+                    filteredSuperadminData?.total?.usia || {}
+                  ).map(
+                    ([label, value]) => (
+                      <MiniCard
+                        key={label}
+                        label={label}
+                        value={Number(value)}
+                      />
+                    )
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* EXPORT */}
+
+              <div className="flex flex-wrap gap-2 border-t pt-4">
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="rounded-xl bg-slate-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800"
+                >
+                  Cetak / Print
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportSuperadminExcel}
+                  className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
+                >
+                  Export Excel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportSuperadminPDF}
+                  className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-700"
+                >
+                  Export PDF
+                </button>
+
+              </div>
+
+            </div>
+
+          </section>
+        )}
         {/* JUDUL LAPORAN */}
 
         <section className="rounded-2xl border bg-white p-6">
@@ -1687,6 +3071,19 @@ function MiniMoney({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

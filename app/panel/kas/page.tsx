@@ -10,6 +10,17 @@ const pengeluaran=["Sampah","Kebersihan","Keamanan","Lingkungan","Kegiatan RT","
 const money=(n:number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
 
 export default function KasPage(){
+  function apiHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = { ...(extra || {}) };
+    const role = localStorage.getItem("rt_role");
+    const activeRT = localStorage.getItem("rt_superadmin_active");
+
+    if (role === "superadmin" && activeRT) {
+      headers["x-rt-unit-id"] = activeRT;
+    }
+
+    return headers;
+  }
   const [rows,setRows]=useState<Row[]>([]);
   const [summary,setSummary]=useState({pemasukan:0,pengeluaran:0,saldo:0});
   const [type,setType]=useState<"PEMASUKAN"|"PENGELUARAN">("PEMASUKAN");
@@ -24,7 +35,7 @@ export default function KasPage(){
   const [message,setMessage]=useState("");
 
   async function load(){
-    const r=await fetch("/api/kas",{cache:"no-store"});
+    const r=await fetch("/api/kas",{cache:"no-store",credentials:"include",headers:apiHeaders()});
     const j=await r.json();
     if(r.ok){setRows(j.rows||[]);setSummary(j.summary||{pemasukan:0,pengeluaran:0,saldo:0})}
     else setMessage(j.error||"Gagal membaca Kas RT.");
@@ -64,7 +75,7 @@ export default function KasPage(){
     const r = await fetch("/api/kas", {
   method: edit ? "PATCH" : "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type": "application/json", "x-rt-unit-id": localStorage.getItem("rt_superadmin_active") || "",
   },
   body: JSON.stringify({
     id: edit?.id,
@@ -113,7 +124,7 @@ await load();
 
   async function remove(id:string){
     if(!confirm("Hapus transaksi ini?"))return;
-    const r=await fetch(`/api/kas?id=${encodeURIComponent(id)}`,{method:"DELETE"});
+    const r=await fetch(`/api/kas?id=${encodeURIComponent(id)}`,{method:"DELETE",credentials:"include",headers:apiHeaders()});
     const j=await r.json();
     if(!r.ok){setMessage(j.error||"Gagal menghapus.");return}
     setMessage("Transaksi berhasil dihapus.");load();
@@ -197,6 +208,10 @@ await load();
 
 function Card({title,value,strong=false}:{title:string;value:number;strong?:boolean}){return <div className="bg-white border rounded-2xl p-5"><div className="text-xs text-slate-500">{title}</div><div className={`text-2xl mt-1 ${strong?"font-black":"font-bold"}`}>{money(value)}</div></div>}
 function Mini({label,value}:{label:string;value:number}){return <div className="bg-slate-50 rounded-xl p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="font-black">{money(value)}</div></div>}
+
+
+
+
 
 
 

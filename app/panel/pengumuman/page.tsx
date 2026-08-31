@@ -13,6 +13,18 @@ type Pengumuman = {
 };
 
 export default function PengumumanPage() {
+  function apiHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = { ...(extra || {}) };
+    const role = localStorage.getItem("rt_role");
+    const activeRT = localStorage.getItem("rt_superadmin_active");
+
+    if (role === "superadmin" && activeRT) {
+      headers["x-rt-unit-id"] = activeRT;
+    }
+
+    return headers;
+  }
+
   const router = useRouter();
 
   const [role, setRole] = useState("");
@@ -30,7 +42,7 @@ export default function PengumumanPage() {
   const [saving, setSaving] = useState(false);
 
   const canManage =
-    role === "ketua" || role === "sekretaris";
+    role === "superadmin" || role === "ketua" || role === "sekretaris";
 
   async function load() {
     try {
@@ -73,7 +85,7 @@ export default function PengumumanPage() {
     // Pengumuman boleh dilihat semua role
     if (
       !savedRole ||
-      !["ketua", "sekretaris", "bendahara", "warga"].includes(
+      !["superadmin", "ketua", "sekretaris", "bendahara", "warga"].includes(
         savedRole
       )
     ) {
@@ -140,7 +152,9 @@ export default function PengumumanPage() {
           method: editingId ? "PATCH" : "POST",
           headers: {
             "Content-Type": "application/json",
+            ...apiHeaders(),
           },
+          credentials: "include",
           body: JSON.stringify({
             ...(editingId
               ? { id: editingId }
@@ -203,7 +217,9 @@ export default function PengumumanPage() {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
+            ...apiHeaders(),
           },
+          credentials: "include",
           body: JSON.stringify({
             id: item.id,
             aktif: !item.aktif,
@@ -260,6 +276,8 @@ export default function PengumumanPage() {
         )}`,
         {
           method: "DELETE",
+          credentials: "include",
+          headers: apiHeaders(),
         }
       );
 
@@ -342,13 +360,7 @@ export default function PengumumanPage() {
               </div>
 
               <div className="mt-1 font-black">
-                {role === "ketua"
-                  ? "Ketua RT"
-                  : role === "sekretaris"
-                  ? "Sekretaris"
-                  : role === "bendahara"
-                  ? "Bendahara"
-                  : "Warga"}
+                {role === "superadmin" ? "Superadmin" : role === "ketua" ? "Ketua RT" : role === "sekretaris" ? "Sekretaris" : role === "bendahara" ? "Bendahara" : "Warga"}
               </div>
             </div>
 
@@ -560,6 +572,19 @@ export default function PengumumanPage() {
     </main>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

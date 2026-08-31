@@ -42,6 +42,14 @@ export default function PanelLayout({
 
     const key = pathPermission[pathname];
 
+    console.log("PANEL ACCESS:", {
+      pathname,
+      role,
+      key,
+      allowed: role ? permissions[role] : null,
+      activeRT: localStorage.getItem("rt_superadmin_active"),
+    });
+
     if (key && !permissions[role].includes(key)) {
       alert("Anda tidak memiliki hak akses untuk halaman ini.");
       router.replace("/panel");
@@ -68,5 +76,6 @@ export default function PanelLayout({
     </>
   );
 }
+
 
 
