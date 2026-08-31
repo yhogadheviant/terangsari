@@ -26,6 +26,20 @@ type Qris = {
 
 const methods = ["CASH", "TRANSFER", "QRIS", "LAINNYA"];
 
+function getQrisImageUrl(url: string) {
+  const value = (url || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (value.includes("drive.google.com")) {
+    return `/api/qris-image?url=${encodeURIComponent(value)}`;
+  }
+
+  return value;
+}
+
 const rp = (n: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -547,7 +561,7 @@ export default function IuranPage() {
               {qris.imageUrl ? (
                 <div className="mt-4 flex justify-center">
                   <img
-                    src={qris.imageUrl}
+                    src={getQrisImageUrl(qris.imageUrl)}
                     alt="QRIS Pembayaran"
                     className="h-64 w-64 rounded-2xl border bg-white object-contain p-2"
                   />
@@ -824,7 +838,7 @@ export default function IuranPage() {
 
           {qris.active && qris.imageUrl && (
             <img
-              src={qris.imageUrl}
+              src={getQrisImageUrl(qris.imageUrl)}
               alt="QRIS"
               className="mt-4 h-56 w-56 rounded-xl border object-contain"
             />
@@ -834,6 +848,9 @@ export default function IuranPage() {
     </main>
   );
 }
+
+
+
 
 
 
