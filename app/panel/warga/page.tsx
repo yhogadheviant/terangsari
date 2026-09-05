@@ -90,12 +90,33 @@ export default function Page() {
   const listLeftInner = useRef<HTMLDivElement>(null);
 
   async function load() {
+  try {
     const r = await fetch("/api/warga", {
       cache: "no-store",
       headers: apiHeaders(),
     });
-    if (r.ok) setData(await r.json());
+
+    const j = await r.json();
+
+    console.log("WARGA_LOAD:", {
+      status: r.status,
+      ok: r.ok,
+      jumlah: Array.isArray(j) ? j.length : "BUKAN ARRAY",
+    });
+
+    if (!r.ok) {
+      setMsg(j?.error || `Gagal memuat data warga (${r.status})`);
+      setData([]);
+      return;
+    }
+
+    setData(Array.isArray(j) ? j : []);
+  } catch (error) {
+    console.error("WARGA_LOAD_ERROR:", error);
+    setMsg("Gagal memuat data warga.");
+    setData([]);
   }
+}
 
   useEffect(() => { load(); }, []);
 
@@ -129,6 +150,11 @@ export default function Page() {
 
   async function save(e:FormEvent) {
     e.preventDefault();
+    const nik=String(form.nik||'').trim();
+    const nomorKK=String(form.nomorKK||'').trim();
+    if(!/^\d{16}$/.test(nik)) return setMsg('NIK harus terdiri dari 16 digit angka.');
+    if(nomorKK && !/^\d{16}$/.test(nomorKK)) return setMsg('Nomor KK harus terdiri dari 16 digit angka.');
+    if(form.tanggalLahir && new Date(form.tanggalLahir)>new Date()) return setMsg('Tanggal lahir tidak boleh di masa depan.');
     setBusy(true);
 
     try {
@@ -250,6 +276,99 @@ export default function Page() {
     setMsg(`Preview ${j.total} warga dari sheet "${j.sheet}".`);
   }
 
+  async function exportExcel() {
+    if (!data.length) {
+      setMsg("Belum ada data warga untuk diekspor.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const r = await fetch("/api/warga/export", {
+        method: "GET",
+        cache: "no-store",
+        headers: apiHeaders(),
+      });
+
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setMsg(j.error || "Gagal mengekspor Excel.");
+        return;
+      }
+
+      const blob = await r.blob();
+      const disposition = r.headers.get("content-disposition") || "";
+      const match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+
+      const filename = match
+        ? decodeURIComponent(match[1])
+        : "Data-Warga.xlsx";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = filename;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+
+      setMsg(`Export berhasil: ${filename}`);
+    } catch (error) {
+      console.error("WARGA_EXPORT_ERROR:", error);
+      setMsg("Terjadi kesalahan saat mengekspor Excel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportPdf() {
+    if (!data.length) {
+      setMsg("Belum ada data warga untuk diekspor.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const r = await fetch("/api/warga/export-pdf", {
+        method: "GET",
+        cache: "no-store",
+        headers: apiHeaders(),
+      });
+
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(t || "Export PDF gagal.");
+      }
+
+      const blob = await r.blob();
+
+      const disposition = r.headers.get("content-disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || "Data-Warga.pdf";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+
+      setMsg(`Export PDF berhasil: ${filename}`);
+    } catch (e: any) {
+      setMsg(e?.message || "Export PDF gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function importRows() {
     if (!preview.length) return;
     setBusy(true);
@@ -447,13 +566,38 @@ export default function Page() {
 
           <div className="w-full min-w-0 bg-white border rounded-2xl p-4 sm:p-5">
             <div className="text-2xl"></div>
-            <h2 className="font-black mt-2">Import Excel</h2>
+            <h2 className="font-black mt-2">Import / Export Excel</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">Daerah asal KK dicatat sebagai nama daerah, bukan nomor KK.</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input type="file" accept=".xlsx,.xls" onChange={e=>setFile(e.target.files?.[0]||null)}
-                className="w-full min-w-0 border rounded-xl p-3 text-xs sm:flex-1"/>
-              <button onClick={previewExcel} disabled={busy} className="w-full shrink-0 bg-blue-600 text-white rounded-xl px-4 py-3 font-bold sm:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={e=>setFile(e.target.files?.[0]||null)}
+                className="w-full min-w-0 border rounded-xl p-3 text-xs"
+              />
+
+              <button
+                onClick={previewExcel}
+                disabled={busy}
+                className="w-full sm:w-auto bg-blue-600 text-white rounded-xl px-4 py-3 font-bold whitespace-nowrap"
+              >
                 Preview Excel
+              </button>
+
+              <button
+                onClick={exportExcel}
+                disabled={busy || !data.length}
+                className="w-full sm:w-auto bg-emerald-600 text-white rounded-xl px-4 py-3 font-bold whitespace-nowrap"
+              >
+                Export Excel
+              </button>
+
+              <button
+                onClick={exportPdf}
+                disabled={busy || !data.length}
+                className="w-full sm:w-auto bg-red-600 text-white rounded-xl px-4 py-3 font-bold whitespace-nowrap"
+              >
+                Export PDF
               </button>
             </div>
           </div>
@@ -586,20 +730,195 @@ export default function Page() {
           </section>
         )}
 
-        <section className="w-full min-w-0 overflow-hidden rounded-2xl border bg-white">
-          <div className="flex flex-col justify-between gap-3 p-3 sm:flex-row sm:items-center sm:p-5">
-            <div>
-              <h2 className="font-black">Daftar Warga</h2>
-              <p className="text-xs text-slate-500">{data.length} data tersimpan</p>
+        <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-4 sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-lg">
+                    👥
+                  </div>
+                  <div>
+                    <h2 className="font-black text-slate-900">Daftar Warga</h2>
+                    <p className="text-xs text-slate-500">
+                      {data.length} data tersimpan
+                      {q && ` • ${filtered.length} ditemukan`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative w-full lg:w-96">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  🔎
+                </span>
+                <input
+                  value={q}
+                  onChange={e=>setQ(e.target.value)}
+                  placeholder="Cari NIK, nama, No KK..."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                />
+                {q && (
+                  <button
+                    type="button"
+                    onClick={()=>setQ("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                    aria-label="Hapus pencarian"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
-            <input value={q} onChange={e=>setQ(e.target.value)}
-              placeholder="Cari NIK, nama, No KK, daerah KK asal..."
-              className="w-full rounded-xl border p-3 text-sm sm:w-80"/>
           </div>
 
-          <div className="min-w-0 px-2 pb-3 sm:px-5 sm:pb-5">
+          {/* MOBILE CARD VIEW */}
+          <div className="space-y-3 p-3 sm:p-4 md:hidden">
+            {filtered.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
+                <div className="text-3xl">👥</div>
+                <p className="mt-3 font-bold text-slate-700">
+                  Belum ada data warga
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Coba ubah kata pencarian atau tambahkan warga baru.
+                </p>
+              </div>
+            ) : (
+              filtered.map(x=>(
+                <article
+                  key={x.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/70 p-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-lg">
+                      👤
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-bold text-slate-900">
+                        {x.nama || "-"}
+                      </h3>
+                      <p className="mt-0.5 text-xs font-mono text-slate-500">
+                        NIK: {x.nik || "-"}
+                      </p>
+                    </div>
+
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                      x.statusTinggal === "TETAP"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {x.statusTinggal === "TETAP"
+                        ? "TETAP"
+                        : String(x.statusTinggal || "-")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-px bg-slate-100">
+                    <div className="bg-white p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        No. KK
+                      </p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+                        {x.nomorKK || "-"}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        Hubungan
+                      </p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+                        {x.hubunganKeluarga || "-"}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        Jenis Kelamin
+                      </p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+                        {x.jenisKelamin === "LAKI_LAKI"
+                          ? "Laki-laki"
+                          : x.jenisKelamin === "PEREMPUAN"
+                            ? "Perempuan"
+                            : x.jenisKelamin || "-"}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        Usia
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-slate-700">
+                        {x.usia ? `${x.usia} tahun` : "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 p-4">
+                    <div className="space-y-2 text-xs">
+                      <div className="flex gap-2">
+                        <span className="w-20 shrink-0 text-slate-400">
+                          Alamat
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          {x.alamat || "-"}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <span className="w-20 shrink-0 text-slate-400">
+                          Lahir
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          {x.tempatLahir || "-"}
+                          {x.tanggalLahir
+                            ? ` • ${new Date(x.tanggalLahir).toLocaleDateString("id-ID")}`
+                            : ""}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <span className="w-20 shrink-0 text-slate-400">
+                          Pekerjaan
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          {x.pekerjaan || "-"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={()=>editWarga(x)}
+                        disabled={busy}
+                        className="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition active:scale-[.98] hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        ✏️ Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={()=>deleteWarga(x)}
+                        disabled={busy}
+                        className="min-h-11 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 transition active:scale-[.98] hover:bg-red-100 disabled:opacity-50"
+                      >
+                        🗑️ Hapus
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+
+          {/* DESKTOP TABLE VIEW */}
+          <div className="hidden min-w-0 px-2 pb-3 sm:px-5 sm:pb-5 md:block">
             <div className="rt11-scroll-note text-[10px] leading-4 sm:text-xs">
-              • Scroll vertikal di kiri &nbsp;•&nbsp;  Scroll horizontal di atas
+              • Scroll vertikal di kiri &nbsp;•&nbsp; Scroll horizontal di atas
               &nbsp;•&nbsp; <b>NIK dan Nama Lengkap sticky</b>
             </div>
 
@@ -658,7 +977,11 @@ export default function Page() {
                     </tr>
                   ))}
                   {!filtered.length && (
-                    <tr><td colSpan={cols.length + 1} className="p-8 text-center text-slate-400">Belum ada data warga.</td></tr>
+                    <tr>
+                      <td colSpan={cols.length + 1} className="p-8 text-center text-slate-400">
+                        Belum ada data warga.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -727,6 +1050,14 @@ function Select({
     </select>
   </label>;
 }
+
+
+
+
+
+
+
+
 
 
 

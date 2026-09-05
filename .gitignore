@@ -20,3 +20,5 @@ transfer-to-neon.js
 # Local database / migration helper SQL
 prisma/*.sql
 scripts/cek-warga-rt.cjs
+.vercel
+.env*

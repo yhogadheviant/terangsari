@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 const DEFAULT_AMOUNT = 40000;
 
@@ -23,6 +23,14 @@ export async function GET(request: Request) {
 
     if (context.response) {
       return context.response;
+    }
+    const permissionResponse = await requirePermission(
+      context.session,
+      "IURAN_VIEW"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
     const rTUnitId = context.rTUnitId!;
@@ -160,17 +168,54 @@ export async function POST(request: Request) {
 
     const rTUnitId = context.rTUnitId!;
 
-    const session = await getSession();
-
-    if (!session) {
-      return jsonError("Belum login.", 401);
-    }
-
     const body = await request.json();
+    const permissionCode =
+      body.action === "generate"
+        ? "IURAN_GENERATE"
+        : "IURAN_CREATE";
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      permissionCode
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
         // =====================================================
     // GENERATE TAGIHAN IURAN SEMUA KK
     // =====================================================
 
+    if (body.action === "regenerate") {
+      const periode = String(body.periode || "").trim();
+      const amount = Number(body.amount);
+
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periode)) {
+        return jsonError("Periode iuran tidak valid.", 400);
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return jsonError("Nominal iuran tidak valid.", 400);
+      }
+
+      const result = await prisma.iuran.updateMany({
+        where: {
+          rTUnitId,
+          periode,
+          status: "BELUM_BAYAR",
+        },
+        data: {
+          amount,
+        },
+      });
+
+      return NextResponse.json({
+        message: "Nominal iuran berhasil diregenerate.",
+        periode,
+        amount,
+        diubah: result.count,
+      });
+    }
     if (body.action === "generate") {
       const periode = String(body.periode || "").trim();
 
@@ -391,14 +436,16 @@ export async function PATCH(request: Request) {
     if (context.response) {
       return context.response;
     }
+    const permissionResponse = await requirePermission(
+      context.session,
+      "IURAN_CANCEL"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
     const rTUnitId = context.rTUnitId!;
-
-    const session = await getSession();
-
-    if (!session) {
-      return jsonError("Belum login.", 401);
-    }
 
     const rawBody = await request.text();
 
@@ -485,14 +532,16 @@ export async function PUT(request: Request) {
     if (context.response) {
       return context.response;
     }
+    const permissionResponse = await requirePermission(
+      context.session,
+      "IURAN_QRIS_MANAGE"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
     const rTUnitId = context.rTUnitId!;
-
-    const session = await getSession();
-
-    if (!session) {
-      return jsonError("Belum login.", 401);
-    }
 
     const body = await request.json();
 
@@ -536,7 +585,7 @@ export async function PUT(request: Request) {
         })
       : await prisma.qRISConfig.create({
           data: {
-            id: `qris-${session.rTUnitId}`,
+            id: `qris-${rTUnitId}`,
             merchantName,
             qrisName,
             qrisString,
@@ -562,6 +611,11 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+
+
+
+
 
 
 

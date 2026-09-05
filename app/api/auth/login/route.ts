@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { setSession } from "@/app/lib/auth/session";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/app/lib/activity-log";
 
 export async function POST(request: Request) {
   try {
@@ -62,6 +63,17 @@ export async function POST(request: Request) {
       role: user.role.toLowerCase(),
       wargaId: user.wargaId,
       rTUnitId: user.rTUnitId,
+    });
+
+    await logActivity({
+      actorUserId:user.id,
+      actorUsername:user.username,
+      actorRole:user.role,
+      action:"LOGIN",
+      module:"AUTH",
+      description:`Login berhasil sebagai ${user.role.toLowerCase()}.`,
+      rTUnitId:user.rTUnitId,
+      request,
     });
 
     return NextResponse.json({

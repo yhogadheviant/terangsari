@@ -1,4 +1,6 @@
 ﻿import { NextResponse } from "next/server";
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 import * as XLSX from "xlsx";
 
 const s = (v: unknown) => v == null ? "" : String(v).trim();
@@ -52,6 +54,29 @@ function pick(r: Record<string, unknown>, keys: string[]) {
 
 export async function POST(req: Request) {
   try {
+    const context = await getRTContext(req);
+
+    if (context.response) {
+      return context.response;
+    }
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_IMPORT"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
+
+    const rTUnitId = context.rTUnitId;
+
+    if (!rTUnitId) {
+      return NextResponse.json(
+        { error: "RT aktif tidak ditemukan." },
+        { status: 400 }
+      );
+    }
     const f=(await req.formData()).get("file");
     if(!(f instanceof File))return NextResponse.json({error:"File Excel tidak ditemukan."},{status:400});
 
@@ -113,5 +138,8 @@ export async function POST(req: Request) {
     return NextResponse.json({error:"File Excel tidak dapat dibaca."},{status:500});
   }
 }
+
+
+
 
 

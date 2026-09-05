@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -8,16 +9,26 @@ function jsonError(error: string, status: number) {
 
 export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) {
-      return jsonError("Belum login.", 401);
+    if (context.response) {
+      return context.response;
     }
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    const permissionResponse = await requirePermission(
+      context.session,
+      "IURAN_VIEW"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
+    const rTUnitId = context.rTUnitId;
+
+    if (!rTUnitId) {
+      return jsonError("RT aktif tidak ditemukan.", 400);
+    }
     const periode =
       new URL(request.url).searchParams.get("periode") ||
       new Date().toISOString().slice(0, 7);
@@ -25,13 +36,13 @@ export async function GET(request: Request) {
     const [totalKK, iuran, qris] = await Promise.all([
       prisma.kK.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
 
       prisma.iuran.findMany({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           periode,
         },
         include: {
@@ -52,7 +63,7 @@ export async function GET(request: Request) {
 
       prisma.qRISConfig.findFirst({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
     ]);
@@ -117,5 +128,6 @@ export async function GET(request: Request) {
     );
   }
 }
+
 
 

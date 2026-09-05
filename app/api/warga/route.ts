@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function ageFromBirthDate(value: string | null | undefined) {
   if (!value) return null;
@@ -27,6 +28,15 @@ export async function GET(req: Request) {
 
   if (context.response) {
     return context.response;
+  }
+
+  const permissionResponse = await requirePermission(
+    context.session,
+    "WARGA_VIEW"
+  );
+
+  if (permissionResponse) {
+    return permissionResponse;
   }
 
   const rTUnitId = context.rTUnitId;
@@ -63,6 +73,15 @@ export async function PUT(req: Request) {
 
     if (context.response) {
       return context.response;
+    }
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_UPDATE"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
     const rTUnitId = context.rTUnitId!;
@@ -192,6 +211,15 @@ export async function DELETE(req: Request) {
       return context.response;
     }
 
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_DELETE"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
+
     const rTUnitId = context.rTUnitId!;
 
     const body = await req.json();
@@ -247,6 +275,15 @@ export async function POST(req: Request) {
       return context.response;
     }
 
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_CREATE"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
+
     const rTUnitId = context.rTUnitId!;
 
     const b = await req.json();
@@ -278,12 +315,14 @@ export async function POST(req: Request) {
 
     if (
       existingWarga &&
-        existingWarga.rTUnitId !== rTUnitId
+        existingWarga.id !== b.id
     ) {
       return NextResponse.json(
         {
           error:
-            "NIK tersebut sudah terdaftar pada RT lain dan tidak dapat diubah.",
+            existingWarga.rTUnitId === rTUnitId
+              ? "NIK tersebut sudah terdaftar di RT ini."
+              : "NIK tersebut sudah terdaftar pada RT lain dan tidak dapat diubah.",
         },
         { status: 409 }
       );
@@ -476,6 +515,16 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

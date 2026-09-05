@@ -1,26 +1,36 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
 }
 
-export async function GET() {
+/* =========================
+   GET PENGUMUMAN
+========================= */
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    const where = session?.rTUnitId
-      ? {
-          rTUnitId: session.rTUnitId,
-        }
-      : {
-          aktif: true,
-        };
+    if (context.response) {
+      return context.response;
+    }
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGUMUMAN_VIEW"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
+    const rTUnitId = context.rTUnitId!;
 
     const data = await prisma.pengumuman.findMany({
-      where,
+      where: {
+        rTUnitId,
+      },
       orderBy: {
         tanggal: "desc",
       },
@@ -40,15 +50,25 @@ export async function GET() {
   }
 }
 
+/* =========================
+   POST PENGUMUMAN
+========================= */
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
-
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    if (context.response) {
+      return context.response;
     }
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGUMUMAN_CREATE"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
+    const rTUnitId = context.rTUnitId!;
 
     const body = await request.json();
 
@@ -75,7 +95,10 @@ export async function POST(request: Request) {
       : new Date();
 
     if (Number.isNaN(tanggal.getTime())) {
-      return jsonError("Tanggal tidak valid.", 400);
+      return jsonError(
+        "Tanggal tidak valid.",
+        400
+      );
     }
 
     const data = await prisma.pengumuman.create({
@@ -84,7 +107,7 @@ export async function POST(request: Request) {
         isi,
         aktif,
         tanggal,
-        rTUnitId: session.rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -103,17 +126,24 @@ export async function POST(request: Request) {
   }
 }
 
+/* =========================
+   PATCH PENGUMUMAN
+========================= */
 export async function PATCH(request: Request) {
   try {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
 
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGUMUMAN_UPDATE"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
     const rTUnitId = context.rTUnitId!;
 
-    const session = await getSession();
-
-    if (!session) return jsonError("Belum login.", 401);
     const body = await request.json();
     const id = String(body.id || "").trim();
 
@@ -127,7 +157,7 @@ export async function PATCH(request: Request) {
     const existing = await prisma.pengumuman.findFirst({
       where: {
         id,
-        rTUnitId: rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -161,14 +191,19 @@ export async function PATCH(request: Request) {
       const tanggal = new Date(body.tanggal);
 
       if (Number.isNaN(tanggal.getTime())) {
-        return jsonError("Tanggal tidak valid.", 400);
+        return jsonError(
+          "Tanggal tidak valid.",
+          400
+        );
       }
 
       data.tanggal = tanggal;
     }
 
     const updated = await prisma.pengumuman.update({
-      where: { id },
+      where: {
+        id,
+      },
       data,
     });
 
@@ -187,17 +222,23 @@ export async function PATCH(request: Request) {
   }
 }
 
+/* =========================
+   DELETE PENGUMUMAN
+========================= */
 export async function DELETE(request: Request) {
   try {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
 
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGUMUMAN_DELETE"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
     const rTUnitId = context.rTUnitId!;
-
-    const session = await getSession();
-
-    if (!session) return jsonError("Belum login.", 401);
 
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
@@ -212,7 +253,7 @@ export async function DELETE(request: Request) {
     const existing = await prisma.pengumuman.findFirst({
       where: {
         id,
-        rTUnitId: rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -224,7 +265,9 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.pengumuman.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
 
     return NextResponse.json({
@@ -240,17 +283,6 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 

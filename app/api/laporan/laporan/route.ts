@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function getPeriodRange(periode: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(periode);
@@ -31,16 +32,22 @@ function jsonError(error: string, status: number) {
 
 export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) {
-      return jsonError("Belum login.", 401);
+    if (context.response) {
+      return context.response;
     }
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    const permissionResponse = await requirePermission(
+      context.session,
+      "LAPORAN_VIEW"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
+    const rTUnitId = context.rTUnitId!;
     const url = new URL(request.url);
 
     const periode =
@@ -69,33 +76,33 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       prisma.kK.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           jenisKelamin: "LAKI_LAKI",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           jenisKelamin: "PEREMPUAN",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             lt: 17,
           },
@@ -104,7 +111,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 17,
             lt: 60,
@@ -114,7 +121,7 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           usia: {
             gte: 60,
           },
@@ -123,35 +130,35 @@ export async function GET(request: Request) {
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "TETAP",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "SEWA",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "KONTRAK",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "MENUMPANG",
         },
       }),
 
       prisma.warga.count({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           statusTinggal: "LAINNYA",
         },
       }),
@@ -163,7 +170,7 @@ export async function GET(request: Request) {
 
     const iuran = await prisma.iuran.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
         periode,
       },
       select: {
@@ -225,7 +232,7 @@ export async function GET(request: Request) {
     const tactical =
       await prisma.tacticalFundTransaction.findMany({
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
           date: {
             gte: start,
             lt: end,
@@ -319,5 +326,9 @@ export async function GET(request: Request) {
     );
   }
 }
+
+
+
+
 
 

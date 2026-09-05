@@ -1,5 +1,4 @@
 ﻿"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -122,10 +121,80 @@ export default function IuranPage() {
     }
   }
 
+  async function regenerateIuran() {
+    const nominal = Number(amount);
+
+    if (!Number.isFinite(nominal) || nominal <= 0) {
+      alert("Nominal iuran tidak valid.");
+      return;
+    }
+
+    const yakin = window.confirm(
+      `Regenerate iuran ${periode}?\n\n` +
+      `Nominal baru: ${rp(nominal)} / KK\n\n` +
+      `Hanya tagihan BELUM BAYAR yang akan diubah.\n` +
+      `Tagihan LUNAS tetap aman.`
+    );
+
+    if (!yakin) return;
+
+    try {
+      setProcessing(true);
+
+      const r = await fetch("/api/iuran", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "regenerate",
+          periode,
+          amount: nominal,
+        }),
+      });
+
+      const text = await r.text();
+      let d: any = {};
+
+      try {
+        d = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error("Response server tidak valid.");
+      }
+
+      if (!r.ok) {
+        throw new Error(d.error || "Gagal regenerate iuran.");
+      }
+
+      await load();
+
+      alert(
+        `${d.message}\n\n` +
+        `Periode: ${d.periode}\n` +
+        `Nominal baru: ${rp(d.amount)}\n` +
+        `Tagihan diubah: ${d.diubah}`
+      );
+    } catch (e) {
+      alert(
+        e instanceof Error
+          ? e.message
+          : "Gagal regenerate iuran."
+      );
+    } finally {
+      setProcessing(false);
+    }
+  }
   async function generateIuran() {
+    const nominal = Number(amount);
+
+    if (!Number.isFinite(nominal) || nominal <= 0) {
+      alert("Nominal iuran tidak valid.");
+      return;
+    }
+
     const yakin = window.confirm(
       `Generate tagihan iuran ${periode} untuk semua KK?\n\n` +
-      `Nominal: Rp40.000 / KK\n` +
+      `Nominal: ${rp(nominal)} / KK\n` +
       `KK yang sudah memiliki tagihan tidak akan dibuat ulang.`
     );
 
@@ -142,7 +211,7 @@ export default function IuranPage() {
         body: JSON.stringify({
           action: "generate",
           periode,
-          amount: 40000,
+          amount: nominal,
         }),
       });
 
@@ -153,9 +222,7 @@ export default function IuranPage() {
       try {
         d = text ? JSON.parse(text) : {};
       } catch {
-        throw new Error(
-          "Response server tidak valid."
-        );
+        throw new Error("Response server tidak valid.");
       }
 
       if (!r.ok) {
@@ -466,6 +533,16 @@ export default function IuranPage() {
                 className="rounded-xl border px-3 py-2"
               />
 
+              <input
+                type="number"
+                min="1"
+                step="1000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Nominal / KK"
+                className="w-40 rounded-xl border px-3 py-2"
+              />
+
               <button
                 type="button"
                 onClick={generateIuran}
@@ -476,6 +553,7 @@ export default function IuranPage() {
                   ? "Memproses..."
                   : "Generate Iuran"}
               </button>
+              <button type="button" onClick={regenerateIuran} disabled={processing} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50">{processing ? "Memproses..." : "Regenerate Iuran"}</button>
             </div>
           </div>
         </section>
@@ -588,8 +666,8 @@ export default function IuranPage() {
         </section>
 
         {/* DAFTAR IURAN */}
-        <section className="rounded-2xl border bg-white p-5">
-          <div className="flex flex-wrap justify-between gap-3">
+        <section className="rounded-2xl border bg-white p-4 md:p-5">
+          <div className="flex flex-col gap-3">
             <div>
               <h2 className="text-lg font-black">
                 {statusFilter === "BELUM_BAYAR"
@@ -597,14 +675,14 @@ export default function IuranPage() {
                   : "Daftar Iuran KK"}
               </h2>
 
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 mt-1">
                 {statusFilter === "BELUM_BAYAR"
-                  ? `${belumBayar.length} KK belum melakukan pembayaran â€¢ Total ${rp(totalTunggakan)}`
+                  ? `${belumBayar.length} KK belum melakukan pembayaran • Total ${rp(totalTunggakan)}`
                   : "Satu baris = satu Kepala Keluarga."}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <select
                 value={statusFilter}
                 onChange={(e) =>
@@ -615,29 +693,135 @@ export default function IuranPage() {
                       | "LUNAS"
                   )
                 }
-                className="rounded-xl border px-3 py-2 text-sm"
+                className="rounded-xl border px-3 py-2.5 text-sm"
               >
-                <option value="SEMUA">
-                  Semua Status
-                </option>
-                <option value="BELUM_BAYAR">
-                  Belum Bayar
-                </option>
-                <option value="LUNAS">
-                  Lunas
-                </option>
+                <option value="SEMUA">Semua Status</option>
+                <option value="BELUM_BAYAR">Belum Bayar</option>
+                <option value="LUNAS">Lunas</option>
               </select>
 
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari kepala keluarga / No. KK"
-                className="rounded-xl border px-3 py-2"
+                className="rounded-xl border px-3 py-2.5 flex-1"
               />
             </div>
           </div>
 
-          <div className="mt-4 overflow-auto rounded-xl border">
+          {/* MOBILE */}
+          <div className="md:hidden mt-4 space-y-3">
+            {filtered.map((r) => (
+              <div
+                key={r.id}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      Kepala Keluarga
+                    </div>
+
+                    <div className="mt-1 font-black text-base truncate">
+                      {r.kepalaKeluarga}
+                    </div>
+
+                    <div className="mt-1 text-xs font-mono text-slate-500 break-all">
+                      KK {r.nomorKK}
+                    </div>
+                  </div>
+
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${
+                      r.status === "LUNAS"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {r.status === "LUNAS" ? "LUNAS" : "BELUM BAYAR"}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[10px] text-slate-400">
+                      Nominal
+                    </div>
+                    <div className="mt-1 font-black text-base">
+                      {rp(r.amount)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[10px] text-slate-400">
+                      Anggota
+                    </div>
+                    <div className="mt-1 font-black text-base">
+                      {r.jumlahAnggota} orang
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[10px] text-slate-400">
+                      Metode
+                    </div>
+                    <div className="mt-1 text-sm font-bold">
+                      {r.method || "-"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[10px] text-slate-400">
+                      Periode
+                    </div>
+                    <div className="mt-1 text-sm font-bold">
+                      {r.periode}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <div className="text-[10px] text-slate-400">
+                    Alamat
+                  </div>
+                  <div className="mt-1 text-sm leading-5">
+                    {r.alamat || "-"}
+                  </div>
+                </div>
+
+                {r.status === "LUNAS" ? (
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => cancel(r.id, r.kepalaKeluarga)}
+                    className="mt-4 w-full rounded-xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Batalkan Lunas
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => pilihBayar(r)}
+                    className="mt-4 w-full rounded-xl bg-blue-100 px-4 py-3 text-sm font-bold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Bayar Iuran
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {!filtered.length && (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">
+                Belum ada KK.
+              </div>
+            )}
+          </div>
+
+          {/* DESKTOP */}
+          <div className="hidden md:block mt-4 overflow-auto rounded-xl border">
             <table className="min-w-[1000px] w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
@@ -663,13 +847,8 @@ export default function IuranPage() {
 
               <tbody>
                 {filtered.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-t"
-                  >
-                    <td className="px-3 py-3">
-                      {r.nomorKK}
-                    </td>
+                  <tr key={r.id} className="border-t">
+                    <td className="px-3 py-3">{r.nomorKK}</td>
 
                     <td className="px-3 py-3 font-semibold">
                       {r.kepalaKeluarga}
@@ -711,10 +890,7 @@ export default function IuranPage() {
                           type="button"
                           disabled={processing}
                           onClick={() =>
-                            cancel(
-                              r.id,
-                              r.kepalaKeluarga
-                            )
+                            cancel(r.id, r.kepalaKeluarga)
                           }
                           className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -748,7 +924,6 @@ export default function IuranPage() {
             </table>
           </div>
         </section>
-
         {/* QRIS */}
         <section className="rounded-2xl border bg-white p-5">
           <div className="flex justify-between gap-3">
@@ -848,6 +1023,16 @@ export default function IuranPage() {
     </main>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

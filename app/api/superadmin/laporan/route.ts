@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { hasRole } from "@/app/lib/auth/authorization";
 
 const BATAS_USIA_PEMILIH = 17;
 
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
       return jsonError("Belum login.", 401);
     }
 
-    if (session.role !== "superadmin") {
+    if (!hasRole(session, ["SUPERADMIN"])) {
       return jsonError(
         "Akses hanya untuk Superadmin.",
         403
@@ -115,6 +116,19 @@ export async function GET(request: Request) {
           },
         },
       });
+
+    if (kkId !== "all") {
+      const kkExists = rtUnits.some((unit) =>
+        unit.kks.some((kk) => kk.id === kkId)
+      );
+
+      if (!kkExists) {
+        return jsonError(
+          "KK tidak ditemukan pada RT yang dipilih.",
+          400
+        );
+      }
+    }
 
     const rt = rtUnits.map((unit) => {
       const warga = unit.warga;

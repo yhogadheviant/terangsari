@@ -16,8 +16,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   rTUnitId     String?
-  rTUnit       RTUnit?  @relation(fields: [rTUnitId], references: [id])
-  warga        Warga?   @relation(fields: [wargaId], references: [id])
+
+  rTUnit      RTUnit?          @relation(fields: [rTUnitId], references: [id])
+  warga       Warga?           @relation(fields: [wargaId], references: [id])
+  permissions UserPermission[]
+  activityLogs ActivityLog[]
 }
 
 model KK {
@@ -67,9 +70,10 @@ model Warga {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   rTUnitId           String?
-  user               User?
-  kk                 KK?              @relation(fields: [kkId], references: [id])
-  rTUnit             RTUnit?          @relation(fields: [rTUnitId], references: [id])
+
+  user   User?
+  kk     KK?     @relation(fields: [kkId], references: [id])
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@index([nama])
   @@index([nomorKK])
@@ -88,7 +92,8 @@ model TacticalFundTransaction {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   rTUnitId    String?
-  rTUnit      RTUnit?          @relation(fields: [rTUnitId], references: [id])
+
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@index([type])
   @@index([date])
@@ -105,7 +110,8 @@ model KasTransaction {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   rTUnitId    String?
-  rTUnit      RTUnit?            @relation(fields: [rTUnitId], references: [id])
+
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@index([type])
   @@index([date])
@@ -124,8 +130,9 @@ model Iuran {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   rTUnitId  String?
-  kk        KK          @relation(fields: [kkId], references: [id], onDelete: Cascade)
-  rTUnit    RTUnit?     @relation(fields: [rTUnitId], references: [id])
+
+  kk     KK      @relation(fields: [kkId], references: [id], onDelete: Cascade)
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@unique([kkId, periode])
   @@index([periode])
@@ -143,7 +150,8 @@ model QRISConfig {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   rTUnitId     String?
-  rTUnit       RTUnit?  @relation(fields: [rTUnitId], references: [id])
+
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 }
 
 model Pengumuman {
@@ -155,7 +163,8 @@ model Pengumuman {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   rTUnitId  String?
-  rTUnit    RTUnit?  @relation(fields: [rTUnitId], references: [id])
+
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@index([aktif])
   @@index([tanggal])
@@ -172,24 +181,26 @@ model Kegiatan {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   rTUnitId   String?
-  rTUnit     RTUnit?  @relation(fields: [rTUnitId], references: [id])
+
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id])
 
   @@index([tanggal])
   @@index([aktif])
 }
 
 model RTUnit {
-  id         String                    @id @default(cuid())
-  kodeRT     String
-  kodeRW     String
-  namaRT     String
-  perumahan  String?
-  desa       String?
-  kecamatan  String?
-  kabupaten  String?
-  aktif      Boolean                   @default(true)
-  createdAt  DateTime                  @default(now())
-  updatedAt  DateTime                  @updatedAt
+  id        String   @id @default(cuid())
+  kodeRT    String
+  kodeRW    String
+  namaRT    String
+  perumahan String?
+  desa      String?
+  kecamatan String?
+  kabupaten String?
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   iuran      Iuran[]
   kks        KK[]
   kas        KasTransaction[]
@@ -199,9 +210,75 @@ model RTUnit {
   danaTaktis TacticalFundTransaction[]
   users      User[]
   warga      Warga[]
+  activityLogs ActivityLog[]
 
   @@unique([kodeRT, kodeRW])
   @@index([aktif])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  category    String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userPermissions UserPermission[]
+}
+
+model UserPermission {
+  id           String   @id @default(cuid())
+  userId       String
+  permissionId String
+  allowed      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+}
+
+
+model ActivityLog {
+  id            String   @id @default(cuid())
+  actorUserId   String?
+  actorUsername String
+  actorRole     String
+  action        String
+  module        String
+  targetType    String?
+  targetId      String?
+  description   String
+  metadata      String?
+  ipAddress     String?
+  userAgent     String?
+  rTUnitId      String?
+  createdAt     DateTime @default(now())
+
+  actor  User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  rTUnit RTUnit? @relation(fields: [rTUnitId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([rTUnitId])
+  @@index([actorRole])
+  @@index([module])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model AppSetting {
+  id        String   @id
+  key       String   @unique
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime
 }
 
 enum Role {
@@ -248,13 +325,4 @@ enum IuranStatus {
 enum KasTransactionType {
   PEMASUKAN
   PENGELUARAN
-}
-
-
-model AppSetting {
-  id        String   @id
-  key       String   @unique
-  value     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime
 }

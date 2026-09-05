@@ -1,6 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
+
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function clean(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -13,26 +15,27 @@ function errorResponse(message: string, status: number) {
   );
 }
 
-function canManageSettings(role: string) {
-  return String(role || "").trim().toUpperCase() === "KETUA";
-}
-
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) {
-      return errorResponse("Belum login.", 401);
+    if (context.response) {
+      return context.response;
     }
 
-    if (!session.rTUnitId) {
-      return errorResponse("Akun belum memiliki RT.", 403);
-    }
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGATURAN_VIEW"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
+    const rTUnitId = context.rTUnitId!;
 
     const [rt, account] = await Promise.all([
       prisma.rTUnit.findUnique({
         where: {
-          id: session.rTUnitId,
+          id: rTUnitId,
         },
         select: {
           id: true,
@@ -49,7 +52,7 @@ export async function GET() {
 
       prisma.user.findUnique({
         where: {
-          id: session.id,
+          id: context.session.id,
         },
         select: {
           username: true,
@@ -66,7 +69,6 @@ export async function GET() {
       success: true,
       rt,
       account,
-      canManage: canManageSettings(session.role),
     });
   } catch (error) {
     console.error("PENGATURAN_GET_ERROR:", error);
@@ -82,22 +84,20 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) {
-      return errorResponse("Belum login.", 401);
+    if (context.response) {
+      return context.response;
     }
 
-    if (!session.rTUnitId) {
-      return errorResponse("Akun belum memiliki RT.", 403);
-    }
+    const permissionResponse = await requirePermission(
+      context.session,
+      "PENGATURAN_UPDATE"
+    );
 
-    if (!canManageSettings(session.role)) {
-      return errorResponse(
-        "Hanya Ketua RT yang dapat mengubah pengaturan RT.",
-        403
-      );
-    }
+    if (permissionResponse) return permissionResponse;
+
+    const rTUnitId = context.rTUnitId!;
 
     const body = await request.json();
 
@@ -114,7 +114,7 @@ export async function PATCH(request: Request) {
 
     const existing = await prisma.rTUnit.findUnique({
       where: {
-        id: session.rTUnitId,
+        id: rTUnitId,
       },
       select: {
         id: true,
@@ -130,7 +130,7 @@ export async function PATCH(request: Request) {
         kodeRT,
         kodeRW,
         NOT: {
-          id: session.rTUnitId,
+          id: rTUnitId,
         },
       },
       select: {
@@ -147,7 +147,7 @@ export async function PATCH(request: Request) {
 
     const rt = await prisma.rTUnit.update({
       where: {
-        id: session.rTUnitId,
+        id: rTUnitId,
       },
       data: {
         kodeRT,
@@ -194,5 +194,3 @@ export async function PATCH(request: Request) {
     );
   }
 }
-
-

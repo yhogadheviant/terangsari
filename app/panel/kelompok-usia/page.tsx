@@ -82,30 +82,139 @@ export default function KelompokUsiaPage(){
       </section>
 
       {selected && <section className="bg-white border rounded-2xl overflow-hidden">
-        <div className="p-5 border-b flex flex-col md:flex-row justify-between gap-3">
-          <div><h2 className="font-black text-lg">{selected.label}</h2>
-            <p className="text-xs text-slate-500">{selected.total} warga • Laki-laki {selected.lakiLaki} • Perempuan {selected.perempuan}</p></div>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari NIK / nama..."
-            className="border rounded-xl px-3 py-2.5 w-full md:w-72"/>
+        <div className="p-4 md:p-5 border-b flex flex-col md:flex-row justify-between gap-3">
+          <div>
+            <h2 className="font-black text-lg">{selected.label}</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              {selected.total} warga • Laki-laki {selected.lakiLaki} • Perempuan {selected.perempuan}
+            </p>
+          </div>
+
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Cari NIK / nama..."
+            className="border rounded-xl px-3 py-2.5 w-full md:w-72"
+          />
         </div>
-        <div className="overflow-auto">
+
+        {/* MOBILE */}
+        <div className="md:hidden p-3 space-y-3">
+          {members.map(w => (
+            <div
+              key={w.id}
+              className="rounded-2xl border border-slate-200 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-black text-base truncate">
+                    {w.nama}
+                  </div>
+                  <div className="mt-1 text-xs font-mono text-slate-500 break-all">
+                    NIK {w.nik}
+                  </div>
+                </div>
+
+                <div className="shrink-0 rounded-xl bg-blue-50 px-3 py-2 text-center">
+                  <div className="text-[10px] font-bold text-blue-500">
+                    USIA
+                  </div>
+                  <div className="text-lg font-black text-blue-700">
+                    {w.usia ?? "-"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <div className="text-[10px] text-slate-400">
+                    Jenis Kelamin
+                  </div>
+                  <div className="mt-1 text-sm font-bold">
+                    {w.jenisKelamin === "PEREMPUAN"
+                      ? "Perempuan"
+                      : "Laki-laki"}
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <div className="text-[10px] text-slate-400">
+                    Status Tinggal
+                  </div>
+                  <div className="mt-1 text-sm font-bold">
+                    {w.statusTinggal || "-"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2 rounded-xl bg-slate-50 p-3">
+                <div className="text-[10px] text-slate-400">
+                  Pekerjaan
+                </div>
+                <div className="mt-1 text-sm font-medium">
+                  {w.pekerjaan || "-"}
+                </div>
+              </div>
+
+              {w.tanggalLahir && (
+                <div className="mt-3 text-xs text-slate-500">
+                  📅 Tanggal lahir: {w.tanggalLahir}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {!members.length && (
+            <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">
+              Tidak ada data.
+            </div>
+          )}
+        </div>
+
+        {/* DESKTOP */}
+        <div className="hidden md:block overflow-auto">
           <table className="w-full min-w-[900px] text-sm">
-            <thead className="bg-slate-50"><tr>
-              <th className="p-3 text-left">NIK</th><th className="p-3 text-left">Nama</th>
-              <th className="p-3 text-left">Usia</th><th className="p-3 text-left">JK</th>
-              <th className="p-3 text-left">Pekerjaan</th><th className="p-3 text-left">Status Tinggal</th>
-            </tr></thead>
-            <tbody>{members.map(w=><tr key={w.id} className="border-t">
-              <td className="p-3 font-mono">{w.nik}</td><td className="p-3 font-bold">{w.nama}</td>
-              <td className="p-3">{w.usia??"-"}</td>
-              <td className="p-3">{w.jenisKelamin==="PEREMPUAN"?"Perempuan":"Laki-laki"}</td>
-              <td className="p-3">{w.pekerjaan||"-"}</td><td className="p-3">{w.statusTinggal||"-"}</td>
-            </tr>)}
-            {!members.length&&<tr><td colSpan={6} className="p-8 text-center text-slate-400">Tidak ada data.</td></tr>}</tbody>
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="p-3 text-left">NIK</th>
+                <th className="p-3 text-left">Nama</th>
+                <th className="p-3 text-left">Usia</th>
+                <th className="p-3 text-left">JK</th>
+                <th className="p-3 text-left">Pekerjaan</th>
+                <th className="p-3 text-left">Status Tinggal</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {members.map(w => (
+                <tr key={w.id} className="border-t">
+                  <td className="p-3 font-mono">{w.nik}</td>
+                  <td className="p-3 font-bold">{w.nama}</td>
+                  <td className="p-3">{w.usia ?? "-"}</td>
+                  <td className="p-3">
+                    {w.jenisKelamin === "PEREMPUAN"
+                      ? "Perempuan"
+                      : "Laki-laki"}
+                  </td>
+                  <td className="p-3">{w.pekerjaan || "-"}</td>
+                  <td className="p-3">{w.statusTinggal || "-"}</td>
+                </tr>
+              ))}
+
+              {!members.length && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-8 text-center text-slate-400"
+                  >
+                    Tidak ada data.
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </div>
       </section>}
-
       {withoutAge>0 && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
         <b>Catatan:</b> {withoutAge} warga belum memiliki tanggal lahir/usia yang valid, sehingga belum masuk kelompok usia.
       </div>}
@@ -116,6 +225,9 @@ export default function KelompokUsiaPage(){
 function Stat({label,value}:{label:string;value:number}){
   return <div className="bg-white border rounded-2xl p-4"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-black mt-1">{value}</div></div>
 }
+
+
+
 
 
 

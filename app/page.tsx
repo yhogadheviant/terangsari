@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import {
@@ -232,6 +232,11 @@ export default function Home() {
 
       const d = await r.json();
 
+      if (r.status === 401 || r.status === 403) {
+        setKegiatan([]);
+        return;
+      }
+
       if (!r.ok || !d.success) {
         throw new Error(
           d.error || "Gagal mengambil kegiatan."
@@ -323,7 +328,7 @@ export default function Home() {
 
                     window.location.href =
                       role === "superadmin"
-                        ? "/panel/superadmin/dashboard"
+                        ? "/panel/superadmin"
                         : "/panel";
                   }}
                   className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
@@ -576,6 +581,8 @@ export default function Home() {
     </div>
   );
 }
+
+
 
 
 

@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { hasRole } from "@/app/lib/auth/authorization";
 
 function ageFromBirthDate(date: Date | null) {
   if (!date) return null;
@@ -50,7 +51,7 @@ export async function GET() {
       );
     }
 
-    if (session.role !== "superadmin") {
+    if (!hasRole(session, ["SUPERADMIN"])) {
       return NextResponse.json(
         {
           error: "Akses hanya untuk Superadmin.",
@@ -145,9 +146,6 @@ export async function GET() {
         const desa =
           w.daerahKKAsal?.trim() ||
           "Tidak diketahui";
-
-        desaAsalKK[desa] =
-          (desaAsalKK[desa] || 0) + 1;
 
         if (
           age !== null &&

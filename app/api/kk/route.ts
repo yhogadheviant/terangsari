@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 export async function GET(req: Request) {
   try {
@@ -11,12 +11,16 @@ export async function GET(req: Request) {
       return context.response;
     }
 
-    const rTUnitId = context.rTUnitId!;
-    const session = await getSession();
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KK_VIEW"
+    );
 
-    if (!session) {
-      return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    if (permissionResponse) {
+      return permissionResponse;
     }
+
+    const rTUnitId = context.rTUnitId!;
 
     const rows = await prisma.kK.findMany({
       where: { rTUnitId },
@@ -57,14 +61,23 @@ export async function POST(req: Request) {
       return context.response;
     }
 
-    const rTUnitId = context.rTUnitId!;
-    const session = await getSession();
 
-    if (!session) {
-      return NextResponse.json({ error: "Belum login." }, { status: 401 });
-    }
+    const rTUnitId = context.rTUnitId!;
 
     const body = await req.json();
+
+    const permissionCode = body.id
+      ? "KK_UPDATE"
+      : "KK_CREATE";
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      permissionCode
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
     if (!body.nomorKK || !body.kepalaKeluarga || !body.alamat) {
       return NextResponse.json(
@@ -175,11 +188,16 @@ export async function DELETE(req: Request) {
       return context.response;
     }
 
-    const rTUnitId = context.rTUnitId!;
-    const session = await getSession();
 
-    if (!session) {
-      return NextResponse.json({ error: "Belum login." }, { status: 401 });
+    const rTUnitId = context.rTUnitId!;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KK_DELETE"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
     const { searchParams } = new URL(req.url);
@@ -241,6 +259,10 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+
+
+
 
 
 

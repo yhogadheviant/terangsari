@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
+import { requirePermission } from "@/app/lib/auth/authorization";
+import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function clean(v: unknown) {
   return v == null ? "" : String(v).trim();
@@ -15,19 +16,28 @@ function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) {
+      return context.response;
+    }
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    const rTUnitId = context.rTUnitId!;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KAS_VIEW"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
     const rows = await prisma.kasTransaction.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId,
         category: "PENGELUARAN_KE_DANA_TAKTIS",
       },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
@@ -56,12 +66,21 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(req);
 
-    if (!session) return jsonError("Belum login.", 401);
+    if (context.response) {
+      return context.response;
+    }
 
-    if (!session.rTUnitId) {
-      return jsonError("Akun belum memiliki RT.", 403);
+    const rTUnitId = context.rTUnitId!;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "TRANSFER_KAS_TAKTIS"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
     const body = await req.json();
@@ -87,7 +106,7 @@ export async function POST(req: Request) {
       const masuk = await tx.kasTransaction.aggregate({
         _sum: { amount: true },
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId,
           type: "PEMASUKAN",
         },
       });
@@ -95,7 +114,7 @@ export async function POST(req: Request) {
       const keluar = await tx.kasTransaction.aggregate({
         _sum: { amount: true },
         where: {
-          rTUnitId: session.rTUnitId,
+          rTUnitId,
           type: "PENGELUARAN",
         },
       });
@@ -121,7 +140,7 @@ export async function POST(req: Request) {
             description ||
             "Pengeluaran Kas RT untuk Dana Taktis",
           date,
-          rTUnitId: session.rTUnitId,
+          rTUnitId,
         },
       });
 
@@ -135,7 +154,7 @@ export async function POST(req: Request) {
               description ||
               "Dana Taktis dari pengeluaran Kas RT",
             date,
-            rTUnitId: session.rTUnitId,
+            rTUnitId,
           },
         });
 
@@ -165,5 +184,10 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
+
+
+
 
 

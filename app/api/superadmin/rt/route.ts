@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
 import { hasRole } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json(
@@ -191,6 +192,7 @@ export async function POST(request: Request) {
       },
     });
 
+    await logActivity({actorUserId:auth.session!.id,actorUsername:auth.session!.username,actorRole:auth.session!.role,action:"CREATE",module:"RT",targetType:"RTUnit",targetId:row.id,description:`Menambahkan RT ${row.kodeRT}/RW ${row.kodeRW} (${row.namaRT}).`,metadata:{after:row},rTUnitId:row.id,request});
     return NextResponse.json(
       {
         success: true,
@@ -255,19 +257,46 @@ export async function PATCH(request: Request) {
     } = {};
 
     if (body.kodeRT !== undefined) {
-      data.kodeRT = String(body.kodeRT)
+      const kodeRT = String(body.kodeRT)
         .trim()
         .replace(/^RT[\s-]*/i, "");
+
+      if (!kodeRT) {
+        return errorResponse(
+          "Kode RT wajib diisi.",
+          400
+        );
+      }
+
+      data.kodeRT = kodeRT;
     }
 
     if (body.kodeRW !== undefined) {
-      data.kodeRW = String(body.kodeRW)
+      const kodeRW = String(body.kodeRW)
         .trim()
         .replace(/^RW[\s-]*/i, "");
+
+      if (!kodeRW) {
+        return errorResponse(
+          "Kode RW wajib diisi.",
+          400
+        );
+      }
+
+      data.kodeRW = kodeRW;
     }
 
     if (body.namaRT !== undefined) {
-      data.namaRT = String(body.namaRT).trim();
+      const namaRT = String(body.namaRT).trim();
+
+      if (!namaRT) {
+        return errorResponse(
+          "Nama RT wajib diisi.",
+          400
+        );
+      }
+
+      data.namaRT = namaRT;
     }
 
     if (body.perumahan !== undefined) {
@@ -291,7 +320,14 @@ export async function PATCH(request: Request) {
     }
 
     if (body.aktif !== undefined) {
-      data.aktif = Boolean(body.aktif);
+      if (typeof body.aktif !== "boolean") {
+        return errorResponse(
+          "Status aktif harus berupa boolean.",
+          400
+        );
+      }
+
+      data.aktif = body.aktif;
     }
 
     if (
@@ -328,6 +364,7 @@ export async function PATCH(request: Request) {
       data,
     });
 
+    await logActivity({actorUserId:auth.session!.id,actorUsername:auth.session!.username,actorRole:auth.session!.role,action:"UPDATE",module:"RT",targetType:"RTUnit",targetId:row.id,description:`Mengubah data RT ${row.kodeRT}/RW ${row.kodeRW}.`,metadata:{before:existing,changes:data,after:row},rTUnitId:row.id,request});
     return NextResponse.json({
       success: true,
       message: "Data RT berhasil diperbarui.",

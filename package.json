@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "prisma generate && next build --webpack",
     "start": "next start",
     "lint": "next lint"
   },
@@ -15,6 +15,7 @@
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.37.0",
     "next": "16.3.0",
+    "pdfkit": "^0.20.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "xlsx": "^0.18.5"
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "prisma": "^6.19.0",
@@ -29,4 +31,3 @@
     "typescript": "^5"
   }
 }
-

@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import {
+  Activity,
   Plus,
   Settings,
   Users,
@@ -49,7 +50,17 @@ type AccountRole =
   | "SEKRETARIS"
   | "BENDAHARA"
   | "WARGA";
-
+type PermissionItem = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string;
+  active: boolean;
+  defaultAllowed: boolean;
+  overrideAllowed: boolean | null;
+  effectiveAllowed: boolean;
+};
 const emptyForm = {
   kodeRT: "",
   kodeRW: "",
@@ -104,7 +115,20 @@ export default function SuperadminPage() {
   const [message, setMessage] = useState("");
   const [accountMessage, setAccountMessage] =
     useState("");
+const [permissionAccount, setPermissionAccount] =
+  useState<Account | null>(null);
 
+const [permissions, setPermissions] =
+  useState<PermissionItem[]>([]);
+
+const [loadingPermissions, setLoadingPermissions] =
+  useState(false);
+
+const [savingPermission, setSavingPermission] =
+  useState<string | null>(null);
+
+const [permissionMessage, setPermissionMessage] =
+  useState("");
   // =====================================================
   // LOAD RT
   // =====================================================
@@ -178,8 +202,32 @@ export default function SuperadminPage() {
   }
 
   useEffect(() => {
-    loadRT();
-    loadAccounts();
+    let cancelled = false;
+
+    async function checkSuperadmin() {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const data = await res.json();
+
+        if (!data?.authenticated || String(data?.user?.role || "").toLowerCase() !== "superadmin") {
+          window.location.href = "/panel";
+          return;
+        }
+
+        if (!cancelled) {
+          loadRT();
+          loadAccounts();
+        }
+      } catch {
+        window.location.href = "/login";
+      }
+    }
+
+    checkSuperadmin();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // =====================================================
@@ -494,7 +542,95 @@ export default function SuperadminPage() {
       );
     }
   }
+  async function loadPermissions(account: Account) {
+    try {
+      setPermissionAccount(account);
+      setLoadingPermissions(true);
+      setPermissionMessage("");
 
+      const res = await fetch(
+        `/api/superadmin/users/permissions?userId=${encodeURIComponent(
+          account.id
+        )}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data.error ||
+            "Gagal mengambil permission akun."
+        );
+      }
+
+      setPermissions(
+        Array.isArray(data.data?.permissions) ? data.data.permissions : []
+      );
+    } catch (error) {
+      setPermissions([]);
+
+      setPermissionMessage(
+        error instanceof Error
+          ? error.message
+          : "Gagal mengambil permission akun."
+      );
+    } finally {
+      setLoadingPermissions(false);
+    }
+  }
+  async function savePermission(
+  permissionCode: string,
+  allowed: boolean | null
+) {
+  if (!permissionAccount) return;
+
+  try {
+    setSavingPermission(permissionCode);
+    setPermissionMessage("");
+
+    const res = await fetch(
+      "/api/superadmin/users/permissions",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: permissionAccount.id,
+          permissionCode,
+          allowed,
+        }),
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.error ||
+          "Gagal menyimpan permission."
+      );
+    }
+
+    setPermissionMessage(
+      data.message ||
+        "Permission berhasil diperbarui."
+    );
+
+    await loadPermissions(permissionAccount);
+  } catch (error) {
+    setPermissionMessage(
+      error instanceof Error
+        ? error.message
+        : "Gagal menyimpan permission."
+    );
+  } finally {
+    setSavingPermission(null);
+  }
+}
   const selectedAccounts = selectedRT
     ? accounts.filter(
         (account) =>
@@ -625,6 +761,29 @@ export default function SuperadminPage() {
     Pengaturan Aplikasi
   </span>
 </button>
+
+  <button
+  onClick={() =>
+    window.location.href =
+      "/panel/superadmin/activity"
+  }
+  style={{
+    ...primaryButton,
+    background: "#7c3aed",
+  }}
+>
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "7px",
+    }}
+  >
+    <Activity size={17} />
+    Log Aktivitas
+  </span>
+</button>
+
 </div>
         </div>
 
@@ -1346,18 +1505,30 @@ export default function SuperadminPage() {
                                 }}
                               >
                                 <button
-                                  onClick={() =>
-                                    openEditAccount(
-                                      account
-                                    )
-                                  }
-                                  style={
-                                    secondarySmallButton
-                                  }
-                                >
-                                  Edit
-                                </button>
+  onClick={() =>
+    openEditAccount(account)
+  }
+  style={secondarySmallButton}
+>
+  Edit
+</button>
 
+<button
+  onClick={() => loadPermissions(account)}
+  style={permissionButton}
+>
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "6px",
+    }}
+  >
+    <ShieldCheck size={15} />
+    Permission
+  </span>
+</button>
+                                
                                 <button
                                   onClick={() =>
                                     deleteAccount(
@@ -1380,14 +1551,244 @@ export default function SuperadminPage() {
                 </div>
               )}
             </div>
+              
+            {/* PERMISSION PANEL */}
+
+            {permissionAccount && (
+              <div
+                style={{
+                  marginTop: "24px",
+                  padding: "20px",
+                  background: "#faf5ff",
+                  border: "1px solid #e9d5ff",
+                  borderRadius: "14px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                    marginBottom: "18px",
+                  }}
+                >
+                  <div>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: "19px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <ShieldCheck size={20} />
+                      Permission Akun
+                    </h3>
+
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        color: "#667085",
+                        fontSize: "13px",
+                      }}
+                    >
+                      Akun:{" "}
+                      <strong>
+                        {permissionAccount.username}
+                      </strong>
+                      {" • "}
+                      {roleLabels[permissionAccount.role]}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setPermissionAccount(null);
+                      setPermissions([]);
+                      setPermissionMessage("");
+                    }}
+                    style={secondarySmallButton}
+                  >
+                    Tutup
+                  </button>
+                </div>
+
+                {permissionMessage && (
+                  <Message text={permissionMessage} />
+                )}
+
+                {loadingPermissions ? (
+                  <div style={paddingStyle}>
+                    Memuat permission...
+                  </div>
+                ) : permissions.length === 0 ? (
+                  <div style={paddingStyle}>
+                    Tidak ada permission.
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "12px",
+                    }}
+                  >
+                    {permissions.map((permission) => (
+                      <div
+                        key={permission.id}
+                        style={{
+                          background: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "10px",
+                          padding: "14px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "12px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                              }}
+                            >
+                              {permission.name}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "3px",
+                                fontSize: "12px",
+                                color: "#667085",
+                              }}
+                            >
+                              {permission.code}
+                            </div>
+
+                            {permission.description && (
+                              <div
+                                style={{
+                                  marginTop: "5px",
+                                  fontSize: "13px",
+                                  color: "#667085",
+                                }}
+                              >
+                                {permission.description}
+                              </div>
+                            )}
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <button
+                              disabled={
+                                savingPermission ===
+                                permission.code
+                              }
+                              onClick={() =>
+                                savePermission(
+                                  permission.code,
+                                  null
+                                )
+                              }
+                              style={
+                                permission.overrideAllowed ===
+                                null
+                                  ? permissionActiveButton
+                                  : permissionOptionButton
+                              }
+                            >
+                              Default
+                            </button>
+
+                            <button
+                              disabled={
+                                savingPermission ===
+                                permission.code
+                              }
+                              onClick={() =>
+                                savePermission(
+                                  permission.code,
+                                  true
+                                )
+                              }
+                              style={
+                                permission.overrideAllowed ===
+                                true
+                                  ? permissionAllowButton
+                                  : permissionOptionButton
+                              }
+                            >
+                              Izinkan
+                            </button>
+
+                            <button
+                              disabled={
+                                savingPermission ===
+                                permission.code
+                              }
+                              onClick={() =>
+                                savePermission(
+                                  permission.code,
+                                  false
+                                )
+                              }
+                              style={
+                                permission.overrideAllowed ===
+                                false
+                                  ? permissionDenyButton
+                                  : permissionOptionButton
+                              }
+                            >
+                              Tolak
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            fontSize: "12px",
+                            color: permission.effectiveAllowed
+                              ? "#166534"
+                              : "#991b1b",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Efektif:{" "}
+                          {permission.effectiveAllowed
+                            ? "DIIZINKAN"
+                            : "DITOLAK"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
+
         )}
+
       </div>
     </div>
   );
 }
 
-// =====================================================
 // COMPONENTS
 // =====================================================
 
@@ -1596,7 +1997,54 @@ const accountButton: React.CSSProperties = {
   cursor: "pointer",
   fontWeight: 600,
 };
+const permissionButton: React.CSSProperties = {
+  border: 0,
+  borderRadius: "7px",
+  padding: "7px 10px",
+  background: "#f3e8ff",
+  color: "#7e22ce",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+const permissionOptionButton: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: "7px",
+  padding: "7px 10px",
+  background: "white",
+  color: "#344054",
+  cursor: "pointer",
+  fontWeight: 600,
+};
 
+const permissionActiveButton: React.CSSProperties = {
+  border: "1px solid #7e22ce",
+  borderRadius: "7px",
+  padding: "7px 10px",
+  background: "#f3e8ff",
+  color: "#7e22ce",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const permissionAllowButton: React.CSSProperties = {
+  border: "1px solid #16a34a",
+  borderRadius: "7px",
+  padding: "7px 10px",
+  background: "#dcfce7",
+  color: "#166534",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const permissionDenyButton: React.CSSProperties = {
+  border: "1px solid #dc2626",
+  borderRadius: "7px",
+  padding: "7px 10px",
+  background: "#fee2e2",
+  color: "#991b1b",
+  cursor: "pointer",
+  fontWeight: 700,
+};
 const dangerButton: React.CSSProperties = {
   border: 0,
   borderRadius: "7px",
@@ -1614,6 +2062,17 @@ const successButton: React.CSSProperties = {
   color: "#166534",
   cursor: "pointer",
 };
+
+
+
+
+
+
+
+
+
+
+
 
 
 

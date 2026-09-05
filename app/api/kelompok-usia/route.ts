@@ -1,6 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
+
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 const groups = [
   { key: "0-5", label: "05 Tahun", min: 0, max: 5 },
@@ -37,33 +39,33 @@ function ageFromDate(value: Date | null) {
   return age < 0 ? null : age;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // ==========================================
-    // SESSION
+    // SESSION + RT CONTEXT
     // ==========================================
-    const session = await getSession();
+    const context = await getRTContext(request);
 
-    if (!session) {
-      return NextResponse.json(
-        { error: "Belum login." },
-        { status: 401 }
-      );
-    }
-
-    if (!session.rTUnitId) {
-      return NextResponse.json(
-        { error: "Akun belum memiliki RT." },
-        { status: 403 }
-      );
+    if (context.response) {
+      return context.response;
     }
 
     // ==========================================
-    // DATA WARGA  HANYA RT YANG LOGIN
+    // PERMISSION
+    // ==========================================
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_VIEW"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
+    const rTUnitId = context.rTUnitId!;
+    // DATA WARGA â€” HANYA RT YANG LOGIN
     // ==========================================
     const warga = await prisma.warga.findMany({
       where: {
-        rTUnitId: session.rTUnitId,
+        rTUnitId: rTUnitId,
       },
       select: {
         id: true,
@@ -156,5 +158,4 @@ export async function GET() {
     );
   }
 }
-
 

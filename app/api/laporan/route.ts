@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function getPeriodRange(periode: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(periode);
@@ -36,8 +36,14 @@ export async function GET(request: Request) {
 
     if (context.response) return context.response;
 
+    const permissionResponse = await requirePermission(
+      context.session,
+      "LAPORAN_VIEW"
+    );
+
+    if (permissionResponse) return permissionResponse;
+
     const rTUnitId = context.rTUnitId!;
-    const session = context.session;
 
     const rtUnit = await prisma.rTUnit.findUnique({
       where: {
@@ -209,7 +215,12 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    const anak = balita + anak5_9 + anak10_14 + remaja15_19;
+    const anak =
+      balita +
+      anak5_9 +
+      anak10_14 +
+      remaja15_19;
+
     const dewasa = dewasa20_59;
 
     // =====================================================
@@ -323,6 +334,7 @@ export async function GET(request: Request) {
           lt: end,
         },
       },
+
       orderBy: [
         {
           date: "asc",
@@ -333,15 +345,44 @@ export async function GET(request: Request) {
       ],
     });
 
-    const kasPemasukan = kas
+    const kasKumulatif =
+      await prisma.kasTransaction.findMany({
+        where: {
+          rTUnitId: rTUnitId,
+          date: {
+            lt: end,
+          },
+        },
+
+        orderBy: [
+          {
+            date: "asc",
+          },
+          {
+            createdAt: "asc",
+          },
+        ],
+      });
+
+    const kasPemasukan = kasKumulatif
       .filter((row) => row.type === "PEMASUKAN")
       .reduce((sum, row) => sum + row.amount, 0);
 
-    const kasPengeluaran = kas
+    const kasPengeluaran = kasKumulatif
       .filter((row) => row.type === "PENGELUARAN")
       .reduce((sum, row) => sum + row.amount, 0);
 
-    const kasSaldo = kasPemasukan - kasPengeluaran;
+    const kasSaldo =
+      kasPemasukan -
+      kasPengeluaran;
+
+    const kasPemasukanBulanIni = kas
+      .filter((row) => row.type === "PEMASUKAN")
+      .reduce((sum, row) => sum + row.amount, 0);
+
+    const kasPengeluaranBulanIni = kas
+      .filter((row) => row.type === "PENGELUARAN")
+      .reduce((sum, row) => sum + row.amount, 0);
 
     // =====================================================
     // RESPONSE
@@ -351,6 +392,7 @@ export async function GET(request: Request) {
       success: true,
 
       periode,
+
       warga: {
         totalKK,
         totalWarga,
@@ -417,9 +459,20 @@ export async function GET(request: Request) {
       kas: {
         tersedia: true,
         transaksi: kas.length,
+
         pemasukan: kasPemasukan,
         pengeluaran: kasPengeluaran,
         saldo: kasSaldo,
+
+        pemasukanBulanIni:
+          kasPemasukanBulanIni,
+
+        pengeluaranBulanIni:
+          kasPengeluaranBulanIni,
+
+        saldoBulanIni:
+          kasPemasukanBulanIni -
+          kasPengeluaranBulanIni,
 
         daftar: kas.map((row) => ({
           id: row.id,
@@ -470,14 +523,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-

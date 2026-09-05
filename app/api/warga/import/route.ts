@@ -5,7 +5,8 @@ import {
   HubunganKeluarga,
 } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
+import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function clean(v: unknown) {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -77,22 +78,29 @@ const allowedTinggal = [
 
 export async function POST(req: Request) {
   try {
-    const session = await getSession();
+    const context = await getRTContext(req);
 
-    if (!session) {
-      return NextResponse.json(
-        { error: "Belum login." },
-        { status: 401 }
-      );
+    if (context.response) {
+      return context.response;
     }
 
-    if (!session.rTUnitId) {
-      return NextResponse.json(
-        { error: "Akun belum memiliki RT." },
-        { status: 403 }
-      );
+    const permissionResponse = await requirePermission(
+      context.session,
+      "WARGA_IMPORT"
+    );
+
+    if (permissionResponse) {
+      return permissionResponse;
     }
 
+    const rTUnitId = context.rTUnitId;
+
+    if (!rTUnitId) {
+      return NextResponse.json(
+        { error: "RT aktif tidak ditemukan." },
+        { status: 400 }
+      );
+    }
     const body = await req.json();
     const rows = body?.rows;
 
@@ -169,7 +177,7 @@ export async function POST(req: Request) {
          */
         if (
           existingKK?.rTUnitId &&
-          existingKK.rTUnitId !== session.rTUnitId
+          existingKK.rTUnitId !== rTUnitId
         ) {
           throw new Error(
             `Baris ${i + 1}: KK ${nomorKK} terdaftar pada RT lain.`
@@ -188,7 +196,7 @@ export async function POST(req: Request) {
             /*
              * Pastikan KK tetap berada pada RT login.
              */
-            rTUnitId: session.rTUnitId,
+            rTUnitId: rTUnitId,
 
             ...(hubunganKeluarga === "KEPALA_KELUARGA"
               ? { kepalaKeluarga: nama }
@@ -202,7 +210,7 @@ export async function POST(req: Request) {
             rt: clean(b.rt) || null,
             rw: clean(b.rw) || null,
             statusTinggal,
-            rTUnitId: session.rTUnitId,
+            rTUnitId: rTUnitId,
           },
         });
 
@@ -235,7 +243,7 @@ export async function POST(req: Request) {
           hubungan: clean(b.hubungan) || null,
           kodeHubungan: clean(b.kodeHubungan) || null,
           kkId: kk.id,
-          rTUnitId: session.rTUnitId,
+          rTUnitId: rTUnitId,
         };
 
         /*
@@ -253,7 +261,7 @@ export async function POST(req: Request) {
 
         if (
           existingWarga?.rTUnitId &&
-          existingWarga.rTUnitId !== session.rTUnitId
+          existingWarga.rTUnitId !== rTUnitId
         ) {
           throw new Error(
             `Baris ${i + 1}: NIK ${nik} terdaftar pada RT lain.`
@@ -296,5 +304,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
 
 

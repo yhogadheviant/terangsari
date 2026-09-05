@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import RtInfo from "../../ui/rt-info";
@@ -337,32 +337,140 @@ export default function DataKKPage() {
           />
         </div>
 
-        <section className="bg-white border rounded-2xl p-5 mb-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h2 className="font-black text-lg">Daftar Kartu Keluarga</h2>
-              <p className="text-xs text-slate-500">
-                Klik baris KK untuk melihat seluruh anggotanya.
-              </p>
-            </div>
+        <section className="bg-white border rounded-2xl p-4 md:p-5 mb-5">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h2 className="font-black text-lg">Daftar Kartu Keluarga</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Klik data KK untuk melihat seluruh anggota keluarga.
+                </p>
+              </div>
 
-            <div className="flex gap-2">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Cari No. KK / kepala keluarga..."
-                className="border rounded-xl px-3 py-2.5 w-full md:w-80"
-              />
               <button
+                type="button"
                 onClick={newKK}
-                className="bg-blue-600 text-white rounded-xl px-4 font-bold whitespace-nowrap"
+                className="w-full md:w-auto bg-blue-600 text-white rounded-xl px-4 py-2.5 font-bold whitespace-nowrap hover:bg-blue-700"
               >
                 + Tambah KK
               </button>
             </div>
+
+            <div className="relative">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Cari No. KK / kepala keluarga / alamat..."
+                className="border rounded-xl px-4 py-3 w-full outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
           </div>
 
-          <div className="overflow-auto mt-4 border rounded-xl">
+          {/* MOBILE */}
+          <div className="md:hidden mt-4 space-y-3">
+            {filtered.map((x) => (
+              <div
+                key={x.id}
+                onClick={() => selectKK(x)}
+                className={`rounded-2xl border p-4 cursor-pointer transition active:scale-[0.99] ${
+                  selected?.id === x.id
+                    ? "border-blue-300 bg-blue-50"
+                    : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                      Nomor KK
+                    </div>
+
+                    <div className="font-black text-base break-all">
+                      {x.nomorKK}
+                    </div>
+
+                    <div className="mt-1 font-bold text-slate-800">
+                      {x.kepalaKeluarga}
+                    </div>
+                  </div>
+
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold">
+                    {x.statusTinggal}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[11px] text-slate-400">
+                      Anggota
+                    </div>
+                    <div className="mt-0.5 text-lg font-black">
+                      {x.warga.length} orang
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="text-[11px] text-slate-400">
+                      RT / RW
+                    </div>
+                    <div className="mt-0.5 font-black">
+                      {x.rt || "-"} / {x.rw || "-"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <div className="text-[11px] text-slate-400">
+                    Alamat
+                  </div>
+                  <div className="mt-1 text-sm font-medium leading-5">
+                    {x.alamat || "-"}
+                  </div>
+                </div>
+
+                {x.nomorHP && (
+                  <div className="mt-2 text-xs text-slate-500">
+                    📞 {x.nomorHP}
+                  </div>
+                )}
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      editKK(x);
+                    }}
+                    className="flex-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-bold text-blue-700"
+                  >
+                    ✏️ Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removeKK(x);
+                    }}
+                    disabled={busy}
+                    className="flex-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600 disabled:opacity-50"
+                  >
+                    🗑️ Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {!filtered.length && (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">
+                Belum ada data KK.
+              </div>
+            )}
+          </div>
+
+          {/* DESKTOP */}
+          <div className="hidden md:block overflow-auto mt-4 border rounded-xl">
             <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-slate-50">
                 <tr>
@@ -375,6 +483,7 @@ export default function DataKKPage() {
                   <th className="p-3 text-right">Aksi</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((x) => (
                   <tr
@@ -387,41 +496,36 @@ export default function DataKKPage() {
                     <td className="p-3 font-bold">{x.nomorKK}</td>
                     <td className="p-3">{x.kepalaKeluarga}</td>
                     <td className="p-3">{x.alamat}</td>
+
                     <td className="p-3">
                       {x.rt || "-"} / {x.rw || "-"}
                     </td>
+
                     <td className="p-3">
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold">
                         {x.statusTinggal}
                       </span>
                     </td>
+
                     <td className="p-3 text-center font-black">
                       {x.warga.length}
                     </td>
+
                     <td className="p-3 text-right">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setMsg("");
-                          setSelected(x);
-                          setForm({
-                            nomorKK: x.nomorKK || "",
-                            kepalaKeluarga: x.kepalaKeluarga || "",
-                            alamat: x.alamat || "",
-                            rt: x.rt || "",
-                            rw: x.rw || "",
-                            statusTinggal: x.statusTinggal || "TETAP",
-                            nomorHP: x.nomorHP || "",
-                          });
-                          setShowForm(true);
+                          editKK(x);
                         }}
-                        className="text-blue-600 font-bold mr-3 cursor-pointer"
+                        className="text-blue-600 font-bold mr-3"
                       >
                         Edit
                       </button>
+
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeKK(x);
@@ -437,7 +541,10 @@ export default function DataKKPage() {
 
                 {!filtered.length && (
                   <tr>
-                    <td colSpan={7} className="p-10 text-center text-slate-400">
+                    <td
+                      colSpan={7}
+                      className="p-10 text-center text-slate-400"
+                    >
                       Belum ada data KK.
                     </td>
                   </tr>
@@ -446,7 +553,6 @@ export default function DataKKPage() {
             </table>
           </div>
         </section>
-
         {showForm && (
           <div
             className="p-4"
@@ -487,7 +593,7 @@ export default function DataKKPage() {
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-xl font-bold text-slate-500 hover:bg-slate-200"
                   disabled={busy}
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -693,6 +799,8 @@ function Select({
     </label>
   );
 }
+
+
 
 
 

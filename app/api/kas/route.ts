@@ -1,7 +1,7 @@
-﻿import { NextResponse } from "next/server";
+// app/api/kas/route.ts
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
-import { requireRole } from "@/app/lib/auth/authorization";
+import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 
 function clean(value: unknown): string {
@@ -47,9 +47,15 @@ function getPeriodRange(periode: string) {
   }
 
   return {
+    year,
+    month,
     start: new Date(year, month - 1, 1),
     end: new Date(year, month, 1),
   };
+}
+
+function periodKey(date: Date) {
+  return date.toISOString().slice(0, 7);
 }
 
 function jsonError(error: string, status: number) {
@@ -68,6 +74,11 @@ export async function GET(request: Request) {
     }
 
     const rTUnitId = context.rTUnitId!;
+    const permissionResponse = await requirePermission(context.session, "KAS_VIEW");
+
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
     const url = new URL(request.url);
 
@@ -75,11 +86,12 @@ export async function GET(request: Request) {
       url.searchParams.get("periode") ||
       new Date().toISOString().slice(0, 7);
 
-    const { start, end } = getPeriodRange(periode);
+    const { year, month, start, end } = getPeriodRange(periode);
 
+    // Histori tetap hanya menampilkan transaksi bulan yang dipilih.
     const rows = await prisma.kasTransaction.findMany({
       where: {
-        rTUnitId: rTUnitId,
+        rTUnitId,
         date: {
           gte: start,
           lt: end,
@@ -88,6 +100,21 @@ export async function GET(request: Request) {
       orderBy: [
         { date: "desc" },
         { createdAt: "desc" },
+      ],
+    });
+
+    // Rekap kumulatif mengambil semua transaksi sampai akhir
+    // bulan yang dipilih.
+    const cumulativeRows = await prisma.kasTransaction.findMany({
+      where: {
+        rTUnitId,
+        date: {
+          lt: end,
+        },
+      },
+      orderBy: [
+        { date: "asc" },
+        { createdAt: "asc" },
       ],
     });
 
@@ -100,25 +127,111 @@ export async function GET(request: Request) {
       date: row.date.toISOString(),
     }));
 
-    const pemasukan = normalized
-      .filter((row) => row.type === "PEMASUKAN")
-      .reduce((sum, row) => sum + row.amount, 0);
+    let pemasukanBulanIni = 0;
+    let pengeluaranBulanIni = 0;
 
-    const pengeluaran = normalized
-      .filter((row) => row.type === "PENGELUARAN")
-      .reduce((sum, row) => sum + row.amount, 0);
+    for (const row of rows) {
+      if (row.type === "PEMASUKAN") {
+        pemasukanBulanIni += row.amount;
+      } else {
+        pengeluaranBulanIni += row.amount;
+      }
+    }
 
-    const saldo = pemasukan - pengeluaran;
+    const monthlyMap = new Map<
+      string,
+      { pemasukan: number; pengeluaran: number }
+    >();
+
+    let pemasukanKumulatif = 0;
+    let pengeluaranKumulatif = 0;
+
+    for (const row of cumulativeRows) {
+      const key = periodKey(row.date);
+
+      const current = monthlyMap.get(key) || {
+        pemasukan: 0,
+        pengeluaran: 0,
+      };
+
+      if (row.type === "PEMASUKAN") {
+        current.pemasukan += row.amount;
+        pemasukanKumulatif += row.amount;
+      } else {
+        current.pengeluaran += row.amount;
+        pengeluaranKumulatif += row.amount;
+      }
+
+      monthlyMap.set(key, current);
+    }
+
+    const rekapBulanan: {
+      periode: string;
+      pemasukan: number;
+      pengeluaran: number;
+      pemasukanKumulatif: number;
+      pengeluaranKumulatif: number;
+      saldoKumulatif: number;
+    }[] = [];
+
+    if (cumulativeRows.length > 0) {
+      const firstPeriod = periodKey(cumulativeRows[0].date);
+      const [firstYear, firstMonth] = firstPeriod.split("-").map(Number);
+
+      let cursorYear = firstYear;
+      let cursorMonth = firstMonth;
+      let runningIn = 0;
+      let runningOut = 0;
+
+      while (
+        cursorYear < year ||
+        (cursorYear === year && cursorMonth <= month)
+      ) {
+        const key = `${cursorYear}-${String(cursorMonth).padStart(2, "0")}`;
+
+        const current = monthlyMap.get(key) || {
+          pemasukan: 0,
+          pengeluaran: 0,
+        };
+
+        runningIn += current.pemasukan;
+        runningOut += current.pengeluaran;
+
+        rekapBulanan.push({
+          periode: key,
+          pemasukan: current.pemasukan,
+          pengeluaran: current.pengeluaran,
+          pemasukanKumulatif: runningIn,
+          pengeluaranKumulatif: runningOut,
+          saldoKumulatif: runningIn - runningOut,
+        });
+
+        cursorMonth++;
+
+        if (cursorMonth > 12) {
+          cursorMonth = 1;
+          cursorYear++;
+        }
+      }
+    }
+
+    const saldoKumulatif =
+      pemasukanKumulatif - pengeluaranKumulatif;
 
     return NextResponse.json({
       success: true,
       periode,
       rows: normalized,
       summary: {
-        pemasukan,
-        pengeluaran,
-        saldo,
+        pemasukan: pemasukanKumulatif,
+        pengeluaran: pengeluaranKumulatif,
+        saldo: saldoKumulatif,
+        pemasukanBulanIni,
+        pengeluaranBulanIni,
+        saldoBulanIni:
+          pemasukanBulanIni - pengeluaranBulanIni,
       },
+      rekapBulanan,
     });
   } catch (error) {
     console.error("KAS_GET_ERROR:", error);
@@ -135,15 +248,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const context = await getRTContext(request);
-
     if (context.response) return context.response;
 
     const rTUnitId = context.rTUnitId!;
+    const permissionResponse = await requirePermission(context.session, "KAS_CREATE");
 
-    const session = await getSession();
-    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
-    if (denied) return denied;
+    
 
     const body = await request.json();
     const type = clean(body.type).toUpperCase();
@@ -174,7 +288,7 @@ export async function POST(request: Request) {
         category,
         description,
         date,
-        rTUnitId: rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -205,15 +319,16 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const context = await getRTContext(request);
-
     if (context.response) return context.response;
 
     const rTUnitId = context.rTUnitId!;
+    const permissionResponse = await requirePermission(context.session, "KAS_UPDATE");
 
-    const session = await getSession();
-    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
-    if (denied) return denied;
+    
 
     const body = await request.json();
     const id = clean(body.id);
@@ -225,7 +340,7 @@ export async function PATCH(request: Request) {
     const existing = await prisma.kasTransaction.findFirst({
       where: {
         id,
-        rTUnitId: rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -295,15 +410,17 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const context = await getRTContext(request);
-
     if (context.response) return context.response;
 
     const rTUnitId = context.rTUnitId!;
+    const permissionResponse = await requirePermission(context.session, "KAS_DELETE");
 
-    const session = await getSession();
-    const denied = requireRole(session, ["SUPERADMIN", "KETUA", "BENDAHARA"]);
+    if (permissionResponse) {
+      return permissionResponse;
+    }
 
-    if (denied) return denied;
+
+    
 
     const url = new URL(request.url);
     const id = clean(url.searchParams.get("id"));
@@ -315,7 +432,7 @@ export async function DELETE(request: Request) {
     const existing = await prisma.kasTransaction.findFirst({
       where: {
         id,
-        rTUnitId: rTUnitId,
+        rTUnitId,
       },
     });
 
@@ -345,7 +462,6 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
 
 
 

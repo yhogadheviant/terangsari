@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { getSession } from "@/app/lib/auth/session";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { requirePermission } from "@/app/lib/auth/authorization";
 
 function clean(value: unknown) {
   return value == null ? "" : String(value).trim();
@@ -36,6 +36,13 @@ export async function GET(request: Request) {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KEGIATAN_VIEW"
+    );
+
+    if (permissionResponse) return permissionResponse;
 
     const rTUnitId = context.rTUnitId!;
 
@@ -85,6 +92,13 @@ export async function POST(request: Request) {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KEGIATAN_CREATE"
+    );
+
+    if (permissionResponse) return permissionResponse;
 
     const rTUnitId = context.rTUnitId!;
 
@@ -141,6 +155,13 @@ export async function PATCH(request: Request) {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KEGIATAN_UPDATE"
+    );
+
+    if (permissionResponse) return permissionResponse;
 
     const rTUnitId = context.rTUnitId!;
 
@@ -222,6 +243,13 @@ export async function DELETE(request: Request) {
     const context = await getRTContext(request);
 
     if (context.response) return context.response;
+
+    const permissionResponse = await requirePermission(
+      context.session,
+      "KEGIATAN_DELETE"
+    );
+
+    if (permissionResponse) return permissionResponse;
 
     const rTUnitId = context.rTUnitId!;
 
