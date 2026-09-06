@@ -44,6 +44,13 @@ function dateValue(v: unknown) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+class WargaImportValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WargaImportValidationError";
+  }
+}
+
 function ageFromBirthDate(value: Date | null) {
   if (!value) return null;
 
@@ -112,6 +119,19 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    const MAX_IMPORT_ROWS = 10000;
+
+    if (rows.length > MAX_IMPORT_ROWS) {
+      return NextResponse.json(
+        {
+          error: `Jumlah data import terlalu banyak. Maksimal ${MAX_IMPORT_ROWS} baris per import.`,
+          maxRows: MAX_IMPORT_ROWS,
+          receivedRows: rows.length,
+        },
+        { status: 400 }
+      );
+    }
+
 
     let saved = 0;
     let kkCreated = 0;
@@ -124,9 +144,22 @@ export async function POST(req: Request) {
         const nama = clean(b.nama);
         const nomorKK = clean(b.nomorKK);
 
+
         if (!nik || !nama || !nomorKK) {
           continue;
         }
+
+        if (!/^\d{16}$/.test(nik)) {
+          throw new WargaImportValidationError(
+            `Baris ${i + 1}: NIK harus terdiri dari tepat 16 digit angka.`
+          );
+        }
+        if (!/^\d{16}$/.test(nomorKK)) {
+          throw new WargaImportValidationError(
+            `Baris ${i + 1}: nomor KK harus terdiri dari tepat 16 digit angka.`
+          );
+        }
+
 
         const jenisKelamin = enumValue(
           b.jenisKelamin,
@@ -161,7 +194,7 @@ export async function POST(req: Request) {
           usia !== null &&
           (!Number.isFinite(usia) || usia < 0 || usia > 130)
         ) {
-          throw new Error(
+          throw new WargaImportValidationError(
             `Baris ${i + 1}: usia tidak valid untuk NIK ${nik}.`
           );
         }
@@ -178,11 +211,17 @@ export async function POST(req: Request) {
          * KK yang sudah dimiliki RT lain tidak boleh
          * disentuh oleh proses import RT ini.
          */
+        if (existingKK && !existingKK.rTUnitId) {
+          throw new WargaImportValidationError(
+            `Baris ${i + 1}: KK ${nomorKK} sudah ada tetapi belum memiliki RT. Import dibatalkan agar KK tidak otomatis diklaim oleh RT aktif.`
+          );
+        }
+
         if (
           existingKK?.rTUnitId &&
           existingKK.rTUnitId !== rTUnitId
         ) {
-          throw new Error(
+          throw new WargaImportValidationError(
             `Baris ${i + 1}: KK ${nomorKK} terdaftar pada RT lain.`
           );
         }
@@ -266,7 +305,7 @@ export async function POST(req: Request) {
           existingWarga?.rTUnitId &&
           existingWarga.rTUnitId !== rTUnitId
         ) {
-          throw new Error(
+          throw new WargaImportValidationError(
             `Baris ${i + 1}: NIK ${nik} terdaftar pada RT lain.`
           );
         }
@@ -311,6 +350,15 @@ export async function POST(req: Request) {
       message: `${saved} warga berhasil disimpan ke database.`,
     });
   } catch (e: any) {
+    if (e instanceof WargaImportValidationError) {
+      return NextResponse.json(
+        {
+          error: e.message,
+        },
+        { status: 400 }
+      );
+    }
+
     console.error("IMPORT_WARGA_ERROR:", e);
 
     const detail =
@@ -327,7 +375,5 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
 
 
