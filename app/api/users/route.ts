@@ -514,6 +514,26 @@ export async function DELETE(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: auth.session!.id,
+      actorUsername: auth.session!.username,
+      actorRole: auth.session!.role,
+      action: "DELETE",
+      module: "AKUN",
+      targetType: "User",
+      targetId: existing.id,
+      description: `Menghapus akun ${existing.username}.`,
+      metadata: {
+        before: {
+          username: existing.username,
+          role: existing.role,
+          rTUnitId: existing.rTUnitId,
+        },
+      },
+      rTUnitId: existing.rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Akun berhasil dihapus.",
@@ -530,4 +550,3 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
