@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   BarChart3,
@@ -194,6 +194,8 @@ export default function PanelNav() {
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("");
   const [loadingPermissions, setLoadingPermissions] = useState(true);
+  const [appName, setAppName] = useState("Smart Warga");
+  const [appLogo, setAppLogo] = useState("");
 
   const allPermissionCodes = useMemo(
     () =>
@@ -209,6 +211,31 @@ export default function PanelNav() {
     []
   );
 
+  useEffect(() => {
+    let mounted = true;
+
+    fetch("/api/app-settings", {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (mounted && data?.success) {
+          setAppName(
+            data.appName?.trim() || "Smart Warga"
+          );
+          setAppLogo(
+            data.appLogo?.trim() || ""
+          );
+        }
+      })
+      .catch(() => {
+        // Gunakan fallback jika API gagal.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
   useEffect(() => {
     setUsername(
       localStorage.getItem("rt_username") ||
@@ -347,12 +374,21 @@ export default function PanelNav() {
               className="flex w-full items-center gap-3 text-left"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
-                <Shield className="h-6 w-6" strokeWidth={2.2} />
+                {appLogo ? (
+                  <img
+                    src={appLogo}
+                    alt="Logo portal"
+                    className="h-7 w-7 object-contain"
+                  />
+                ) : (
+                  <Shield className="h-6 w-6" strokeWidth={2.2} />
+
+                )}
               </div>
 
               <div className="min-w-0">
                 <div className="truncate text-base font-black tracking-tight text-slate-900">
-                  SMART RT
+                  {appName}
                 </div>
                 <div className="truncate text-xs font-medium text-slate-500">
                   Portal Warga Digital
@@ -499,7 +535,7 @@ export default function PanelNav() {
             className="min-w-0 text-center"
           >
             <div className="truncate text-sm font-black tracking-tight text-slate-900">
-              SMART RT
+              {appName}
             </div>
             <div className="truncate text-[10px] font-medium text-slate-500">
               RT 011 / RW 005
@@ -525,17 +561,25 @@ export default function PanelNav() {
             onClick={() => setMobileOpen(false)}
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]"
           />
-
           <aside className="relative flex h-full w-[min(86vw,340px)] flex-col bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
-                  <Shield className="h-5 w-5" />
+                  {appLogo ? (
+                    <img
+                      src={appLogo}
+                      alt="Logo portal"
+                      className="h-6 w-6 object-contain"
+                    />
+                  ) : (
+                    <Shield className="h-5 w-5" />
+
+                  )}
                 </div>
 
                 <div>
                   <div className="text-sm font-black text-slate-900">
-                    SMART RT
+                    {appName}
                   </div>
                   <div className="text-[10px] text-slate-500">
                     Portal Warga Digital
