@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
@@ -162,28 +163,58 @@ export async function POST(request: Request) {
     const date = body.date ? new Date(`${text(body.date)}T00:00:00`) : new Date();
     if (Number.isNaN(date.getTime())) return jsonError("Tanggal tidak valid.", 400);
 
-    if (type === "KELUAR") {
-      const [incoming, outgoing] = await Promise.all([
-        prisma.tacticalFundTransaction.aggregate({ _sum: { amount: true }, where: { rTUnitId, type: "MASUK" } }),
-        prisma.tacticalFundTransaction.aggregate({ _sum: { amount: true }, where: { rTUnitId, type: "KELUAR" } }),
-      ]);
-      const balance = Number(incoming._sum.amount ?? 0) - Number(outgoing._sum.amount ?? 0);
-      if (amount > balance) return NextResponse.json({ error: "Saldo Dana Taktis tidak mencukupi.", saldo: balance }, { status: 400 });
-    }
+    const row = await prisma.$transaction(
+      async (tx) => {
+        if (type === "KELUAR") {
+          const [incoming, outgoing] = await Promise.all([
+            tx.tacticalFundTransaction.aggregate({
+              _sum: { amount: true },
+              where: { rTUnitId, type: "MASUK" },
+            }),
+            tx.tacticalFundTransaction.aggregate({
+              _sum: { amount: true },
+              where: { rTUnitId, type: "KELUAR" },
+            }),
+          ]);
 
-    const row = await prisma.tacticalFundTransaction.create({
-      data: {
-        type: type as "MASUK" | "KELUAR",
-        amount,
-        category,
-        description: text(body.description) || null,
-        date,
-        rTUnitId,
+          const balance =
+            Number(incoming._sum.amount ?? 0) -
+            Number(outgoing._sum.amount ?? 0);
+
+          if (amount > balance) {
+            throw new Error(`SALDO_TAKTIS_TIDAK_CUKUP:${balance}`);
+          }
+        }
+
+        return tx.tacticalFundTransaction.create({
+          data: {
+            type: type as "MASUK" | "KELUAR",
+            amount,
+            category,
+            description: text(body.description) || null,
+            date,
+            rTUnitId,
+          },
+        });
       },
-    });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
     return NextResponse.json({ success: true, ok: true, row });
   } catch (error) {
     console.error("DANA_TAKTIS_POST_ERROR", error);
+
+    if (error instanceof Error && error.message.startsWith("SALDO_TAKTIS_TIDAK_CUKUP:")) {
+      const saldo = Number(error.message.split(":")[1] ?? 0);
+      return NextResponse.json(
+        {
+          error: "Saldo Dana Taktis tidak mencukupi.",
+          saldo,
+        },
+        { status: 400 }
+      );
+    }
     return jsonError(error instanceof Error ? error.message : "Gagal menyimpan transaksi Dana Taktis.", 500);
   }
 }
