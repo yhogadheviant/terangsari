@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import {
+  Prisma,
   StatusTinggal,
   JenisKelamin,
   HubunganKeluarga,
@@ -115,7 +116,8 @@ export async function POST(req: Request) {
     let saved = 0;
     let kkCreated = 0;
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(
+      async (tx) => {
       for (let i = 0; i < rows.length; i++) {
         const b = rows[i] || {};
         const nik = clean(b.nik);
@@ -280,7 +282,11 @@ export async function POST(req: Request) {
 
         saved++;
       }
-    });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
 
     await logActivity({
       actorUserId: context.session?.id,
