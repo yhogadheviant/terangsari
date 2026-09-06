@@ -2,6 +2,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function ageFromBirthDate(value: string | null | undefined) {
   if (!value) return null;
@@ -216,6 +217,21 @@ export async function PUT(req: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "UPDATE",
+      module: "WARGA",
+      targetType: "WARGA",
+      targetId: updated.id,
+      description: "Data warga berhasil diperbarui.",
+      metadata: {
+        nik: updated.nik,
+        nama: updated.nama,
+      },
+    });
+
     return NextResponse.json(updated);
   } catch (e) {
     console.error("WARGA_PUT_ERROR", e);
@@ -276,6 +292,21 @@ export async function DELETE(req: Request) {
 
     await prisma.warga.delete({
       where: { id },
+    });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "WARGA",
+      targetType: "WARGA",
+      targetId: existing.id,
+      description: "Data warga berhasil dihapus.",
+      metadata: {
+        nik: existing.nik,
+        nama: existing.nama,
+      },
     });
 
     return NextResponse.json({
@@ -517,6 +548,23 @@ export async function POST(req: Request) {
       create: {
         nik: b.nik,
         ...data,
+      },
+    });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: existingWarga ? "UPDATE" : "CREATE",
+      module: "WARGA",
+      targetType: "WARGA",
+      targetId: warga.id,
+      description: existingWarga
+        ? "Data warga berhasil diperbarui."
+        : "Data warga berhasil dibuat.",
+      metadata: {
+        nik: warga.nik,
+        nama: warga.nama,
       },
     });
 
