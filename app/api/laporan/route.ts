@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
@@ -71,7 +71,19 @@ export async function GET(request: Request) {
       url.searchParams.get("periode") ||
       new Date().toISOString().slice(0, 7);
 
-    const { start, end } = getPeriodRange(periode);
+    let start: Date;
+    let end: Date;
+
+    try {
+      ({ start, end } = getPeriodRange(periode));
+    } catch (error) {
+      return jsonError(
+        error instanceof Error
+          ? error.message
+          : "Periode tidak valid.",
+        400
+      );
+    }
 
     // =====================================================
     // KK & WARGA
@@ -512,10 +524,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Gagal mengambil laporan.",
+        error: "Gagal mengambil laporan.",
       },
       {
         status: 500,
