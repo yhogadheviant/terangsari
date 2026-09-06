@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -111,6 +112,25 @@ export async function POST(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CREATE",
+      module: "PENGUMUMAN",
+      targetType: "Pengumuman",
+      targetId: data.id,
+      description: `Pengumuman "${data.judul}" berhasil dibuat.`,
+      metadata: {
+        judul: data.judul,
+        isi: data.isi,
+        aktif: data.aktif,
+        tanggal: data.tanggal.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Pengumuman berhasil ditambahkan.",
@@ -207,6 +227,33 @@ export async function PATCH(request: Request) {
       data,
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "UPDATE",
+      module: "PENGUMUMAN",
+      targetType: "Pengumuman",
+      targetId: updated.id,
+      description: `Pengumuman "${updated.judul}" berhasil diperbarui.`,
+      metadata: {
+        sebelum: {
+          judul: existing.judul,
+          isi: existing.isi,
+          aktif: existing.aktif,
+          tanggal: existing.tanggal.toISOString(),
+        },
+        sesudah: {
+          judul: updated.judul,
+          isi: updated.isi,
+          aktif: updated.aktif,
+          tanggal: updated.tanggal.toISOString(),
+        },
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Pengumuman berhasil diperbarui.",
@@ -270,6 +317,25 @@ export async function DELETE(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "PENGUMUMAN",
+      targetType: "Pengumuman",
+      targetId: existing.id,
+      description: `Pengumuman "${existing.judul}" berhasil dihapus.`,
+      metadata: {
+        judul: existing.judul,
+        isi: existing.isi,
+        aktif: existing.aktif,
+        tanggal: existing.tanggal.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Pengumuman berhasil dihapus.",
@@ -283,6 +349,3 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
-
-
