@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
+import { logActivity } from "@/app/lib/activity-log";
 import {
   getRoleDefaultPermissions,
   hasRole,
@@ -307,6 +308,22 @@ export async function PATCH(request: Request) {
         },
       });
 
+      await logActivity({
+        actorUserId: auth.session?.id,
+        actorUsername: auth.session?.username,
+        actorRole: auth.session?.role,
+        action: "DELETE",
+        description: `Menghapus override permission ${permissionCode} dari akun ${user.username}`,
+        module: "SUPERADMIN_USER_PERMISSIONS",
+        rTUnitId: user.rTUnitId ?? undefined,
+        metadata: {
+          userId: user.id,
+          username: user.username,
+          permissionId: permission.id,
+          permissionCode,
+          allowed: null,
+        },
+      });
       return NextResponse.json({
         success: true,
         message:
@@ -337,6 +354,22 @@ export async function PATCH(request: Request) {
         },
       });
 
+    await logActivity({
+      actorUserId: auth.session?.id,
+      actorUsername: auth.session?.username,
+      actorRole: auth.session?.role,
+      action: "UPDATE",
+      description: `${body.allowed === true ? "Mengaktifkan" : "Menonaktifkan"} permission ${permissionCode} untuk akun ${user.username}`,
+      module: "SUPERADMIN_USER_PERMISSIONS",
+      rTUnitId: user.rTUnitId ?? undefined,
+      metadata: {
+        userId: user.id,
+        username: user.username,
+        permissionId: permission.id,
+        permissionCode,
+        allowed: body.allowed,
+      },
+    });
     return NextResponse.json({
       success: true,
       message:
