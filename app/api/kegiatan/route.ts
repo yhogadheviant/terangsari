@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function clean(value: unknown) {
   return value == null ? "" : String(value).trim();
@@ -133,6 +134,27 @@ export async function POST(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CREATE",
+      module: "KEGIATAN",
+      targetType: "Kegiatan",
+      targetId: row.id,
+      description: `Kegiatan "${row.nama}" berhasil dibuat.`,
+      metadata: {
+        nama: row.nama,
+        tanggal: row.tanggal.toISOString(),
+        jam: row.jam,
+        lokasi: row.lokasi,
+        keterangan: row.keterangan,
+        aktif: row.aktif,
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       kegiatan: row,
@@ -221,6 +243,37 @@ export async function PATCH(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "UPDATE",
+      module: "KEGIATAN",
+      targetType: "Kegiatan",
+      targetId: row.id,
+      description: `Kegiatan "${row.nama}" berhasil diperbarui.`,
+      metadata: {
+        sebelum: {
+          nama: existing.nama,
+          tanggal: existing.tanggal.toISOString(),
+          jam: existing.jam,
+          lokasi: existing.lokasi,
+          keterangan: existing.keterangan,
+          aktif: existing.aktif,
+        },
+        sesudah: {
+          nama: row.nama,
+          tanggal: row.tanggal.toISOString(),
+          jam: row.jam,
+          lokasi: row.lokasi,
+          keterangan: row.keterangan,
+          aktif: row.aktif,
+        },
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       kegiatan: row,
@@ -284,6 +337,27 @@ export async function DELETE(request: Request) {
       where: {
         id,
       },
+    });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "KEGIATAN",
+      targetType: "Kegiatan",
+      targetId: existing.id,
+      description: `Kegiatan "${existing.nama}" berhasil dihapus.`,
+      metadata: {
+        nama: existing.nama,
+        tanggal: existing.tanggal.toISOString(),
+        jam: existing.jam,
+        lokasi: existing.lokasi,
+        keterangan: existing.keterangan,
+        aktif: existing.aktif,
+      },
+      rTUnitId,
+      request,
     });
 
     return NextResponse.json({
