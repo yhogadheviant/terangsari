@@ -7,6 +7,7 @@ import {
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function clean(v: unknown) {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -281,6 +282,22 @@ export async function POST(req: Request) {
       }
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "IMPORT",
+      description: `Import data warga sebanyak ${saved} warga`,
+      module: "WARGA",
+      targetType: "Warga",
+      metadata: {
+        jumlahRows: rows.length,
+        saved,
+        kkCreated,
+      },
+      rTUnitId,
+      request: req,
+    });
     return NextResponse.json({
       ok: true,
       saved,
