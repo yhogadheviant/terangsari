@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { logActivity } from "@/app/lib/activity-log";
 
 function text(v: unknown) { return v == null ? "" : String(v).trim(); }
 function amountNumber(v: unknown) {
@@ -201,6 +202,25 @@ export async function POST(request: Request) {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       }
     );
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CREATE",
+      module: "DANA_TAKTIS",
+      targetType: "TacticalFundTransaction",
+      targetId: row.id,
+      description: "Transaksi Dana Taktis berhasil dibuat.",
+      metadata: {
+        type: row.type,
+        amount: row.amount,
+        category: row.category,
+        description: row.description,
+        date: row.date.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
     return NextResponse.json({ success: true, ok: true, row });
   } catch (error) {
     console.error("DANA_TAKTIS_POST_ERROR", error);
@@ -233,6 +253,25 @@ export async function DELETE(request: Request) {
     if (!existing) return jsonError("Transaksi tidak ditemukan atau bukan milik RT Anda.", 404);
 
     await prisma.tacticalFundTransaction.delete({ where: { id } });
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "DANA_TAKTIS",
+      targetType: "TacticalFundTransaction",
+      targetId: existing.id,
+      description: "Transaksi Dana Taktis berhasil dihapus.",
+      metadata: {
+        type: existing.type,
+        amount: existing.amount,
+        category: existing.category,
+        description: existing.description,
+        date: existing.date.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
     return NextResponse.json({ success: true, ok: true });
   } catch (error) {
     console.error("DANA_TAKTIS_DELETE_ERROR", error);
