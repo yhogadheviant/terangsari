@@ -2,6 +2,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 const DEFAULT_AMOUNT = 40000;
 
@@ -209,6 +210,23 @@ export async function POST(request: Request) {
         },
       });
 
+      await logActivity({
+        actorUserId: context.session?.id,
+        actorUsername: context.session?.username,
+        actorRole: context.session?.role,
+        action: "REGENERATE",
+        module: "IURAN",
+        targetType: "Iuran",
+        description: `Regenerate nominal iuran periode ${periode} menjadi Rp${amount.toLocaleString("id-ID")}.`,
+        metadata: {
+          periode,
+          amount,
+          diubah: result.count,
+        },
+        rTUnitId,
+        request,
+      });
+
       return NextResponse.json({
         message: "Nominal iuran berhasil diregenerate.",
         periode,
@@ -287,6 +305,25 @@ export async function POST(request: Request) {
           skipDuplicates: true,
         });
       }
+
+      await logActivity({
+        actorUserId: context.session?.id,
+        actorUsername: context.session?.username,
+        actorRole: context.session?.role,
+        action: "GENERATE",
+        module: "IURAN",
+        targetType: "Iuran",
+        description: "Generate tagihan iuran periode " + periode + ".",
+        metadata: {
+          periode,
+          amount,
+          totalKK: kks.length,
+          sudahAda: existing.length,
+          ditambahkan: dataBaru.length,
+        },
+        rTUnitId,
+        request,
+      });
 
       const totalSudahAda = existing.length;
       const totalDitambahkan = dataBaru.length;
@@ -390,6 +427,26 @@ export async function POST(request: Request) {
         },
       });
 
+      await logActivity({
+        actorUserId: context.session?.id,
+        actorUsername: context.session?.username,
+        actorRole: context.session?.role,
+        action: "PAYMENT",
+        module: "IURAN",
+        targetType: "Iuran",
+        targetId: updated.id,
+        description: "Pembayaran iuran periode " + periode + " berhasil dicatat.",
+        metadata: {
+          kkId,
+          periode,
+          amount,
+          method,
+          note,
+        },
+        rTUnitId,
+        request,
+      });
+
       return NextResponse.json({
         success: true,
         message: "Pembayaran berhasil dicatat.",
@@ -408,6 +465,26 @@ export async function POST(request: Request) {
         note,
         paidAt: new Date(),
       },
+    });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "PAYMENT",
+      module: "IURAN",
+      targetType: "Iuran",
+      targetId: created.id,
+      description: "Pembayaran iuran periode " + periode + " berhasil dicatat.",
+      metadata: {
+        kkId,
+        periode,
+        amount,
+        method,
+        note,
+      },
+      rTUnitId,
+      request,
     });
 
     return NextResponse.json({
@@ -503,6 +580,27 @@ try {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CANCEL",
+      module: "IURAN",
+      targetType: "Iuran",
+      targetId: updated.id,
+      description: "Pembayaran iuran periode " + updated.periode + " dibatalkan.",
+      metadata: {
+        kkId: updated.kkId,
+        periode: updated.periode,
+        amount: updated.amount,
+        statusSebelumnya: existing.status,
+        methodSebelumnya: existing.method,
+        paidAtSebelumnya: existing.paidAt,
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Pembayaran berhasil dibatalkan.",
@@ -595,6 +693,28 @@ export async function PUT(request: Request) {
           },
         });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: existingQris ? "UPDATE" : "CREATE",
+      module: "IURAN",
+      targetType: "QRISConfig",
+      targetId: qris.id,
+      description: existingQris
+        ? "Konfigurasi QRIS berhasil diperbarui."
+        : "Konfigurasi QRIS berhasil dibuat.",
+      metadata: {
+        merchantName,
+        qrisName,
+        active,
+        hasQrisString: Boolean(qrisString),
+        hasImageUrl: Boolean(imageUrl),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "QRIS berhasil disimpan.",
@@ -611,6 +731,10 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+
+
+
 
 
 
