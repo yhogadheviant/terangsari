@@ -1,4 +1,6 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { logActivity } from "@/app/lib/activity-log";
 import * as XLSX from "xlsx";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
@@ -379,17 +381,97 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    await prisma.tacticalFundTransaction.createMany({
-      data: newRecords.map((r) => ({
-        type: r.type,
-        amount: r.amount,
-        category: r.category || "Dana Taktis",
-        description: r.description || null,
-        date: r.date,
-        rTUnitId,
-      })),
+    const orderedRecords = [...newRecords].sort((a, b) => {
+      const dateDiff = a.date.getTime() - b.date.getTime();
+      if (dateDiff !== 0) return dateDiff;
+
+      const sheetDiff = a.sheet.localeCompare(b.sheet);
+      if (sheetDiff !== 0) return sheetDiff;
+
+      return a.rowNumber - b.rowNumber;
     });
 
+    await prisma.$transaction(
+      async (tx) => {
+        const [saldoMasuk, saldoKeluar] = await Promise.all([
+          tx.tacticalFundTransaction.aggregate({
+            _sum: { amount: true },
+            where: {
+              rTUnitId,
+              type: "MASUK",
+            },
+          }),
+          tx.tacticalFundTransaction.aggregate({
+            _sum: { amount: true },
+            where: {
+              rTUnitId,
+              type: "KELUAR",
+            },
+          }),
+        ]);
+
+        const saldoSebelumImport =
+          Number(saldoMasuk._sum.amount ?? 0) -
+          Number(saldoKeluar._sum.amount ?? 0);
+
+        let runningImportBalance = saldoSebelumImport;
+
+        for (const record of orderedRecords) {
+          if (record.type === "MASUK") {
+            runningImportBalance += record.amount;
+          } else {
+            runningImportBalance -= record.amount;
+          }
+
+          if (runningImportBalance < 0) {
+            throw new Error(
+              `SALDO_IMPORT_TAKTIS_TIDAK_CUKUP:${JSON.stringify({
+                saldoSebelumImport,
+                rowNumber: record.rowNumber,
+                sheet: record.sheet,
+                tanggal: record.date.toISOString(),
+                type: record.type,
+                amount: record.amount,
+                saldoSetelahTransaksi: runningImportBalance,
+              })}`
+            );
+          }
+        }
+
+        await tx.tacticalFundTransaction.createMany({
+          data: newRecords.map((r) => ({
+            type: r.type,
+            amount: r.amount,
+            category: r.category || "Dana Taktis",
+            description: r.description || null,
+            date: r.date,
+            rTUnitId,
+          })),
+        });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "IMPORT",
+      description: `Import Dana Taktis dari file ${file.name}`,
+      module: "DANA_TAKTIS",
+      targetType: "TacticalFundTransaction",
+      metadata: {
+        fileName: file.name,
+        imported: newRecords.length,
+        skippedDuplicates: validRecords.length - newRecords.length,
+        skippedInvalid: invalidRecords.length,
+        sheets: parsed.sheetNames,
+        saldoAkhirPreview: runningBalance,
+      },
+      rTUnitId,
+      request,
+    });
     return NextResponse.json({
       ok: true,
       action: "confirm",
@@ -404,6 +486,29 @@ export async function POST(request: NextRequest) {
 
     const message =
       error instanceof Error ? error.message : "Terjadi kesalahan saat import.";
+
+    if (message.startsWith("SALDO_IMPORT_TAKTIS_TIDAK_CUKUP:")) {
+      try {
+        const detail = JSON.parse(
+          message.slice("SALDO_IMPORT_TAKTIS_TIDAK_CUKUP:".length)
+        );
+
+        return NextResponse.json(
+          {
+            error: "Import ditolak karena saldo Dana Taktis menjadi negatif.",
+            ...detail,
+          },
+          { status: 400 }
+        );
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Import ditolak karena saldo Dana Taktis tidak mencukupi.",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     return NextResponse.json({ error: message }, { status: 500 });
   }
