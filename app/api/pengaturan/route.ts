@@ -3,6 +3,7 @@ import { prisma } from "@/app/lib/prisma";
 
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 function clean(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -74,9 +75,7 @@ export async function GET(request: Request) {
     console.error("PENGATURAN_GET_ERROR:", error);
 
     return errorResponse(
-      error instanceof Error
-        ? error.message
-        : "Gagal mengambil pengaturan.",
+      "Gagal mengambil pengaturan.",
       500
     );
   }
@@ -118,6 +117,14 @@ export async function PATCH(request: Request) {
       },
       select: {
         id: true,
+        kodeRT: true,
+        kodeRW: true,
+        namaRT: true,
+        perumahan: true,
+        desa: true,
+        kecamatan: true,
+        kabupaten: true,
+        aktif: true,
       },
     });
 
@@ -171,6 +178,41 @@ export async function PATCH(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "UPDATE",
+      module: "PENGATURAN",
+      targetType: "RTUnit",
+      targetId: rt.id,
+      description: `Pengaturan RT "${rt.kodeRT}/${rt.kodeRW}" berhasil diperbarui.`,
+      metadata: {
+        sebelum: {
+          kodeRT: existing.kodeRT,
+          kodeRW: existing.kodeRW,
+          namaRT: existing.namaRT,
+          perumahan: existing.perumahan,
+          desa: existing.desa,
+          kecamatan: existing.kecamatan,
+          kabupaten: existing.kabupaten,
+          aktif: existing.aktif,
+        },
+        sesudah: {
+          kodeRT: rt.kodeRT,
+          kodeRW: rt.kodeRW,
+          namaRT: rt.namaRT,
+          perumahan: rt.perumahan,
+          desa: rt.desa,
+          kecamatan: rt.kecamatan,
+          kabupaten: rt.kabupaten,
+          aktif: rt.aktif,
+        },
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       message: "Pengaturan RT berhasil disimpan.",
@@ -187,9 +229,7 @@ export async function PATCH(request: Request) {
     }
 
     return errorResponse(
-      error instanceof Error
-        ? error.message
-        : "Gagal menyimpan pengaturan.",
+      "Gagal menyimpan pengaturan.",
       500
     );
   }
