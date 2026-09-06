@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/app/lib/auth/session";
+import { prisma } from "@/app/lib/prisma";
 
 export async function getRTContext(request?: Request) {
   const session = await getSession();
@@ -15,7 +16,9 @@ export async function getRTContext(request?: Request) {
     };
   }
 
-  const normalizedRole = String(session.role || "").trim().toUpperCase();
+  const normalizedRole = String(session.role || "")
+    .trim()
+    .toUpperCase();
 
   if (normalizedRole === "SUPERADMIN") {
     const requested =
@@ -32,9 +35,43 @@ export async function getRTContext(request?: Request) {
       };
     }
 
+    // Validasi RT aktif di server.
+    // Jangan mempercayai x-rt-unit-id dari browser secara langsung.
+    const rtUnit = await prisma.rTUnit.findUnique({
+      where: {
+        id: requested,
+      },
+      select: {
+        id: true,
+        aktif: true,
+      },
+    });
+
+    if (!rtUnit) {
+      return {
+        session,
+        rTUnitId: null,
+        response: NextResponse.json(
+          { error: "RT aktif tidak ditemukan." },
+          { status: 404 }
+        ),
+      };
+    }
+
+    if (!rtUnit.aktif) {
+      return {
+        session,
+        rTUnitId: null,
+        response: NextResponse.json(
+          { error: "RT tersebut sedang tidak aktif." },
+          { status: 403 }
+        ),
+      };
+    }
+
     return {
       session,
-      rTUnitId: requested,
+      rTUnitId: rtUnit.id,
       response: null,
     };
   }
