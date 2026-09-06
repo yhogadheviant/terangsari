@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
 import { hasRole } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 const KEY = "app_name";
 
@@ -119,6 +120,20 @@ export async function PATCH(
         },
       });
 
+    const session = await getSession();
+
+    await logActivity({
+      actorUserId: session?.id,
+      actorUsername: session?.username,
+      actorRole: session?.role,
+      action: "UPDATE",
+      description: `Mengubah nama aplikasi menjadi ${setting.value}`,
+      module: "SUPERADMIN_SETTINGS",
+      metadata: {
+        key: KEY,
+        appName: setting.value,
+      },
+    });
     return NextResponse.json({
       success: true,
       message:
