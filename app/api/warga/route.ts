@@ -138,6 +138,27 @@ export async function PUT(req: Request) {
       );
     }
 
+    if (b.kkId) {
+      const targetKK = await prisma.kK.findUnique({
+        where: { id: String(b.kkId) },
+        select: { id: true, rTUnitId: true },
+      });
+
+      if (!targetKK) {
+        return NextResponse.json(
+          { error: "KK tidak ditemukan." },
+          { status: 404 }
+        );
+      }
+
+      if (targetKK.rTUnitId !== rTUnitId) {
+        return NextResponse.json(
+          { error: "KK tersebut bukan milik RT Anda." },
+          { status: 403 }
+        );
+      }
+    }
+
     const tanggalLahir = b.tanggalLahir
       ? new Date(b.tanggalLahir)
       : null;
@@ -163,7 +184,10 @@ export async function PUT(req: Request) {
       }))?.alamat
     : b.nomorKK
       ? (await prisma.kK.findFirst({
-          where: { nomorKK: String(b.nomorKK) },
+          where: {
+            nomorKK: String(b.nomorKK),
+            rTUnitId,
+          },
           select: { alamat: true },
         }))?.alamat
       : null
