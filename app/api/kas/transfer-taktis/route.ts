@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { logActivity } from "@/app/lib/activity-log";
 
 function clean(v: unknown) {
   return v == null ? "" : String(v).trim();
@@ -102,63 +104,92 @@ export async function POST(req: Request) {
       return jsonError("Tanggal tidak valid.", 400);
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const masuk = await tx.kasTransaction.aggregate({
-        _sum: { amount: true },
-        where: {
-          rTUnitId,
-          type: "PEMASUKAN",
-        },
-      });
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const masuk = await tx.kasTransaction.aggregate({
+          _sum: { amount: true },
+          where: {
+            rTUnitId,
+            type: "PEMASUKAN",
+          },
+        });
 
-      const keluar = await tx.kasTransaction.aggregate({
-        _sum: { amount: true },
-        where: {
-          rTUnitId,
-          type: "PENGELUARAN",
-        },
-      });
+        const keluar = await tx.kasTransaction.aggregate({
+          _sum: { amount: true },
+          where: {
+            rTUnitId,
+            type: "PENGELUARAN",
+          },
+        });
 
-      const saldoKas =
-        Number(masuk._sum.amount ?? 0) -
-        Number(keluar._sum.amount ?? 0);
+        const saldoKas =
+          Number(masuk._sum.amount ?? 0) -
+          Number(keluar._sum.amount ?? 0);
 
-      if (amount > saldoKas) {
-        throw new Error(
-          `Saldo Kas RT tidak mencukupi. Saldo saat ini Rp ${saldoKas.toLocaleString(
-            "id-ID"
-          )}.`
-        );
-      }
+        if (amount > saldoKas) {
+          throw new Error(
+            `Saldo Kas RT tidak mencukupi. Saldo saat ini Rp ${saldoKas.toLocaleString(
+              "id-ID"
+            )}.`
+          );
+        }
 
-      const kasOut = await tx.kasTransaction.create({
-        data: {
-          type: "PENGELUARAN",
-          amount,
-          category: "PENGELUARAN_KE_DANA_TAKTIS",
-          description:
-            description ||
-            "Pengeluaran Kas RT untuk Dana Taktis",
-          date,
-          rTUnitId,
-        },
-      });
-
-      const tacticalIn =
-        await tx.tacticalFundTransaction.create({
+        const kasOut = await tx.kasTransaction.create({
           data: {
-            type: "MASUK",
+            type: "PENGELUARAN",
             amount,
-            category: "PENGELUARAN_DARI_KAS_RT",
+            category: "PENGELUARAN_KE_DANA_TAKTIS",
             description:
               description ||
-              "Dana Taktis dari pengeluaran Kas RT",
+              "Pengeluaran Kas RT untuk Dana Taktis",
             date,
             rTUnitId,
           },
         });
 
-      return { kasOut, tacticalIn };
+        const tacticalIn =
+          await tx.tacticalFundTransaction.create({
+            data: {
+              type: "MASUK",
+              amount,
+              category: "PENGELUARAN_DARI_KAS_RT",
+              description:
+                description ||
+                "Dana Taktis dari pengeluaran Kas RT",
+              date,
+              rTUnitId,
+            },
+          });
+
+        return { kasOut, tacticalIn };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
+
+    await logActivity({
+      actorUserId: context.session?.id ?? null,
+      actorUsername: context.session?.username ?? null,
+      actorRole: context.session?.role ?? null,
+      action: "TRANSFER",
+      module: "KAS_DANA_TAKTIS",
+      targetType: "KasTransaction",
+      targetId: result.kasOut.id,
+      description: `Transfer Kas RT ke Dana Taktis sebesar Rp ${amount.toLocaleString(
+        "id-ID"
+      )}.`,
+      metadata: {
+        amount,
+        date: date.toISOString(),
+        kasTransactionId: result.kasOut.id,
+        tacticalTransactionId: result.tacticalIn.id,
+        description:
+          description ||
+          "Pengeluaran Kas RT untuk Dana Taktis",
+      },
+      rTUnitId,
+      request: req,
     });
 
     return NextResponse.json({
@@ -184,10 +215,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
-
-
-
-
-
