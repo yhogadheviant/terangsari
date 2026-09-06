@@ -1,8 +1,9 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getSession } from "@/app/lib/auth/session";
 import { hasRole } from "@/app/lib/auth/authorization";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/app/lib/activity-log";
 
 const ALLOWED_ROLES = [
   "KETUA",
@@ -238,6 +239,24 @@ export async function POST(request: Request) {
       include: {
         rTUnit: true,
       },
+    });
+
+    await logActivity({
+      actorUserId: auth.user?.id,
+      actorUsername: auth.user?.username,
+      actorRole: auth.user?.role,
+      action: "CREATE",
+      description: `Membuat akun ${row.username}`,
+      module: "SUPERADMIN_USERS",
+      targetType: "User",
+      targetId: row.id,
+      metadata: {
+        username: row.username,
+        role: row.role,
+        rTUnitId: row.rTUnitId,
+      },
+      rTUnitId: row.rTUnitId,
+      request,
     });
 
     return NextResponse.json(
