@@ -242,9 +242,9 @@ export async function POST(request: Request) {
     });
 
     await logActivity({
-      actorUserId: auth.user?.id,
-      actorUsername: auth.user?.username,
-      actorRole: auth.user?.role,
+      actorUserId: auth.session?.id,
+      actorUsername: auth.session?.username,
+      actorRole: auth.session?.role,
       action: "CREATE",
       description: `Membuat akun ${row.username}`,
       module: "SUPERADMIN_USERS",
@@ -322,6 +322,12 @@ export async function PATCH(request: Request) {
       },
       include: {
         rTUnit: true,
+        warga: {
+          select: {
+            id: true,
+            rTUnitId: true,
+          },
+        },
       },
     });
 
@@ -437,6 +443,17 @@ export async function PATCH(request: Request) {
         );
       }
 
+      if (
+        existing.warga &&
+        existing.warga.rTUnitId &&
+        existing.warga.rTUnitId !== rTUnitId
+      ) {
+        return errorResponse(
+          "RT akun tidak boleh berbeda dengan RT warga yang terhubung.",
+          400
+        );
+      }
+
       data.rTUnitId = rTUnitId;
     }
 
@@ -450,6 +467,21 @@ export async function PATCH(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: auth.session?.id,
+      actorUsername: auth.session?.username,
+      actorRole: auth.session?.role,
+      action: "UPDATE",
+      description: `Memperbarui akun ${row.username}`,
+      module: "SUPERADMIN_USERS",
+      rTUnitId: row.rTUnitId ?? undefined,
+      metadata: {
+        userId: row.id,
+        username: row.username,
+        role: row.role,
+        rTUnitId: row.rTUnitId,
+      },
+    });
     return NextResponse.json({
       success: true,
       message: "Akun berhasil diperbarui.",
@@ -530,6 +562,21 @@ export async function DELETE(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: auth.session?.id,
+      actorUsername: auth.session?.username,
+      actorRole: auth.session?.role,
+      action: "DELETE",
+      description: `Menghapus akun ${existing.username}`,
+      module: "SUPERADMIN_USERS",
+      rTUnitId: existing.rTUnitId ?? undefined,
+      metadata: {
+        userId: existing.id,
+        username: existing.username,
+        role: existing.role,
+        rTUnitId: existing.rTUnitId,
+      },
+    });
     return NextResponse.json({
       success: true,
       message: "Akun berhasil dihapus.",
