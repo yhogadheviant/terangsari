@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { logActivity } from "@/app/lib/activity-log";
 
 function clean(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -292,6 +293,26 @@ export async function POST(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CREATE",
+      module: "KAS",
+      targetType: "KasTransaction",
+      targetId: row.id,
+      description: "Transaksi Kas berhasil dibuat.",
+      metadata: {
+        type: row.type,
+        amount: row.amount,
+        category: row.category,
+        description: row.description,
+        date: row.date.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       ok: true,
@@ -383,6 +404,31 @@ export async function PATCH(request: Request) {
       },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "UPDATE",
+      module: "KAS",
+      targetType: "KasTransaction",
+      targetId: row.id,
+      description: "Transaksi Kas berhasil diperbarui.",
+      metadata: {
+        typeSebelumnya: existing.type,
+        amountSebelumnya: existing.amount,
+        categorySebelumnya: existing.category,
+        descriptionSebelumnya: existing.description,
+        dateSebelumnya: existing.date.toISOString(),
+        type: row.type,
+        amount: row.amount,
+        category: row.category,
+        description: row.description,
+        date: row.date.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       ok: true,
@@ -447,6 +493,26 @@ export async function DELETE(request: Request) {
       where: { id },
     });
 
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "KAS",
+      targetType: "KasTransaction",
+      targetId: existing.id,
+      description: "Transaksi Kas berhasil dihapus.",
+      metadata: {
+        type: existing.type,
+        amount: existing.amount,
+        category: existing.category,
+        description: existing.description,
+        date: existing.date.toISOString(),
+      },
+      rTUnitId,
+      request,
+    });
+
     return NextResponse.json({
       success: true,
       ok: true,
@@ -462,13 +528,3 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
