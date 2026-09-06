@@ -2,6 +2,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
+import { logActivity } from "@/app/lib/activity-log";
 
 export async function GET(req: Request) {
   try {
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
       where: { rTUnitId },
       include: {
         warga: {
+          where: { rTUnitId },
           orderBy: { nama: "asc" },
           select: {
             id: true,
@@ -143,6 +145,25 @@ export async function POST(req: Request) {
         data,
       });
 
+      await logActivity({
+        actorUserId: context.session?.id,
+        actorUsername: context.session?.username,
+        actorRole: context.session?.role,
+        action: "UPDATE",
+        module: "KK",
+        targetType: "KK",
+        targetId: kk.id,
+        description: "Data KK berhasil diperbarui.",
+        metadata: {
+          nomorKK: kk.nomorKK,
+          kepalaKeluarga: kk.kepalaKeluarga,
+          alamat: kk.alamat,
+          statusTinggal: kk.statusTinggal,
+        },
+        rTUnitId,
+        request: req,
+      });
+
       return NextResponse.json(kk);
     }
 
@@ -161,6 +182,25 @@ export async function POST(req: Request) {
     }
 
     const kk = await prisma.kK.create({ data });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "CREATE",
+      module: "KK",
+      targetType: "KK",
+      targetId: kk.id,
+      description: "Data KK berhasil dibuat.",
+      metadata: {
+        nomorKK: kk.nomorKK,
+        kepalaKeluarga: kk.kepalaKeluarga,
+        alamat: kk.alamat,
+        statusTinggal: kk.statusTinggal,
+      },
+      rTUnitId,
+      request: req,
+    });
 
     return NextResponse.json(kk, { status: 201 });
   } catch (error: any) {
@@ -244,6 +284,25 @@ export async function DELETE(req: Request) {
 
     await prisma.kK.delete({
       where: { id },
+    });
+
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "DELETE",
+      module: "KK",
+      targetType: "KK",
+      targetId: kk.id,
+      description: "Data KK berhasil dihapus.",
+      metadata: {
+        nomorKK: kk.nomorKK,
+        kepalaKeluarga: kk.kepalaKeluarga,
+        alamat: kk.alamat,
+        statusTinggal: kk.statusTinggal,
+      },
+      rTUnitId,
+      request: req,
     });
 
     return NextResponse.json({ ok: true });
