@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { requirePermission } from "@/app/lib/auth/authorization";
 import { getRTContext } from "@/app/lib/auth/rt-context";
+import { logActivity } from "@/app/lib/activity-log";
 import PDFDocument from "pdfkit";
 
 function getRange(periode: string) {
@@ -26,6 +27,27 @@ export async function GET(request: Request) {
     const permissionResponse = await requirePermission(context.session, "DANA_TAKTIS_VIEW");
     if (permissionResponse) return permissionResponse;
     const rTUnitId = context.rTUnitId!;
+
+    const rtUnit = await prisma.rTUnit.findUnique({
+      where: { id: rTUnitId },
+      select: {
+        kodeRT: true,
+        kodeRW: true,
+        namaRT: true,
+        perumahan: true,
+        desa: true,
+        kecamatan: true,
+        kabupaten: true,
+      },
+    });
+
+    if (!rtUnit) {
+      return NextResponse.json(
+        { error: "Data RT tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+
     const periode = new URL(request.url).searchParams.get("periode") || "ALL";
     const range = getRange(periode);
     const where: any = { rTUnitId };
@@ -41,9 +63,30 @@ export async function GET(request: Request) {
     const chunks: Buffer[] = [];
     doc.on("data", (chunk) => chunks.push(chunk));
 
+    const rtIdentity = [
+      `RT ${rtUnit.kodeRT} / RW ${rtUnit.kodeRW}`,
+      rtUnit.namaRT,
+      rtUnit.perumahan,
+    ]
+      .filter(Boolean)
+      .join(" - ");
+
+    const rtLocation = [
+      rtUnit.desa,
+      rtUnit.kecamatan,
+      rtUnit.kabupaten,
+    ]
+      .filter(Boolean)
+      .join(" - ");
+
     doc.fontSize(15).font("Helvetica-Bold").text("LAPORAN DANA TAKTIS", { align: "center" });
-    doc.fontSize(10).font("Helvetica").text("RT 011 RW 005 PERUM TERANGSARI 1", { align: "center" });
-    doc.text(`Periode: ${periode === "ALL" ? "Keseluruhan" : periode}`, { align: "center" });
+    doc.fontSize(10).font("Helvetica").text(rtIdentity, { align: "center" });
+
+    if (rtLocation) {
+      doc.fontSize(8).text(rtLocation, { align: "center" });
+    }
+
+    doc.fontSize(10).text(`Periode: ${periode === "ALL" ? "Keseluruhan" : periode}`, { align: "center" });
     doc.moveDown();
 
     const x = [30, 80, 170, 470, 590, 710];
@@ -80,6 +123,25 @@ export async function GET(request: Request) {
     doc.end();
 
     await new Promise<void>((resolve) => doc.on("end", () => resolve()));
+    await logActivity({
+      actorUserId: context.session?.id,
+      actorUsername: context.session?.username,
+      actorRole: context.session?.role,
+      action: "EXPORT_PDF",
+      description: `Export PDF Dana Taktis periode ${periode}`,
+      module: "DANA_TAKTIS",
+      targetType: "TacticalFundTransaction",
+      metadata: {
+        periode,
+        jumlahTransaksi: rows.length,
+        totalMasuk: masuk,
+        totalKeluar: keluar,
+        saldo,
+        fileName: `Laporan_Dana_Taktis_${periode}.pdf`,
+      },
+      rTUnitId,
+      request,
+    });
     const buffer = Buffer.concat(chunks);
     return new NextResponse(buffer, {
       status: 200,
