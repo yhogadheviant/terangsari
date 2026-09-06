@@ -65,8 +65,11 @@ export async function GET(request: Request) {
       totalWarga,
       lakiLaki,
       perempuan,
-      anak,
-      dewasa,
+      balita,
+      anak5_9,
+      anak10_14,
+      remaja15_19,
+      dewasa20_59,
       lansia,
       tetap,
       sewa,
@@ -104,7 +107,8 @@ export async function GET(request: Request) {
         where: {
           rTUnitId: rTUnitId,
           usia: {
-            lt: 17,
+            gte: 0,
+            lte: 4,
           },
         },
       }),
@@ -113,8 +117,38 @@ export async function GET(request: Request) {
         where: {
           rTUnitId: rTUnitId,
           usia: {
-            gte: 17,
-            lt: 60,
+            gte: 5,
+            lte: 9,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: rTUnitId,
+          usia: {
+            gte: 10,
+            lte: 14,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: rTUnitId,
+          usia: {
+            gte: 15,
+            lte: 19,
+          },
+        },
+      }),
+
+      prisma.warga.count({
+        where: {
+          rTUnitId: rTUnitId,
+          usia: {
+            gte: 20,
+            lte: 59,
           },
         },
       }),
@@ -272,8 +306,11 @@ export async function GET(request: Request) {
         },
 
         kelompokUsia: {
-          anak,
-          dewasa,
+          balita,
+          anak5_9,
+          anak10_14,
+          remaja15_19,
+          dewasa20_59,
           lansia,
         },
 
@@ -306,7 +343,7 @@ export async function GET(request: Request) {
         masuk: danaMasuk,
         keluar: danaKeluar,
         saldo: saldoTaktis,
-        transaksi: tactical,
+        daftar: tactical,
       },
     });
   } catch (error) {
@@ -326,9 +363,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
-
-
-
-
-

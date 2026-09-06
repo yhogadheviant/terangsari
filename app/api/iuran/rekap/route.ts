@@ -72,7 +72,10 @@ export async function GET(request: Request) {
       (x) => x.status === "LUNAS"
     );
 
-    const totalTagihan = totalKK * 40000;
+    const totalTagihan = iuran.reduce(
+      (s, x) => s + x.amount,
+      0
+    );
 
     const totalDiterima = lunas.reduce(
       (s, x) => s + x.amount,
@@ -128,6 +131,4 @@ export async function GET(request: Request) {
     );
   }
 }
-
-
 
