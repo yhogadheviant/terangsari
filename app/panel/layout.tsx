@@ -119,10 +119,8 @@ export default function PanelLayout({
   return (
     <>
       <PanelNav />
-      <main className="pb-24 lg:pb-0">{children}</main>
+      <main className="pb-24 lg:ml-72 lg:pb-0">{children}</main>
     </>
   );
 }
-
-
 
