@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -7,6 +7,7 @@ import {
   type Role,
 } from "../lib/auth";
 import PanelNav from "../ui/panel-nav";
+import PortalFooter from "../ui/portal-footer";
 
 const pathPermission: Record<string, string> = {
   "/panel/kk": "KK_VIEW",
@@ -120,6 +121,9 @@ export default function PanelLayout({
     <>
       <PanelNav />
       <main className="pb-24 lg:ml-72 lg:pb-0">{children}</main>
+      <div className="lg:ml-72">
+        <PortalFooter />
+      </div>
     </>
   );
 }

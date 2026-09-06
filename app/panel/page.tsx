@@ -1397,13 +1397,6 @@ export default function Panel() {
             })}
           </div>
         </section>
-
-        {/* FOOTER */}
-        <footer className="mt-8 border-t border-slate-200 py-6 text-center text-xs text-slate-400">
-          Smart RT • Portal Warga Digital
-          <span className="mx-2">•</span>
-          {roleLabels[role]}
-        </footer>
       </div>
     </main>
   );

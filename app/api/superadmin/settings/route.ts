@@ -6,6 +6,7 @@ import { logActivity } from "@/app/lib/activity-log";
 
 const NAME_KEY = "app_name";
 const LOGO_KEY = "app_logo";
+const COPYRIGHT_KEY = "app_copyright";
 
 async function requireSuperadmin() {
   const session = await getSession();
@@ -39,14 +40,18 @@ export async function GET() {
 
     if (denied) return denied;
 
-    const [nameSetting, logoSetting] = await Promise.all([
-      prisma.appSetting.findUnique({
-        where: { key: NAME_KEY },
-      }),
-      prisma.appSetting.findUnique({
-        where: { key: LOGO_KEY },
-      }),
-    ]);
+    const [nameSetting, logoSetting, copyrightSetting] =
+      await Promise.all([
+        prisma.appSetting.findUnique({
+          where: { key: NAME_KEY },
+        }),
+        prisma.appSetting.findUnique({
+          where: { key: LOGO_KEY },
+        }),
+        prisma.appSetting.findUnique({
+          where: { key: COPYRIGHT_KEY },
+        }),
+      ]);
 
     return NextResponse.json({
       success: true,
@@ -57,6 +62,9 @@ export async function GET() {
         appLogo:
           logoSetting?.value?.trim() ||
           "",
+        copyright:
+          copyrightSetting?.value?.trim() ||
+          `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`,
       },
     });
   } catch (error) {
@@ -94,6 +102,10 @@ export async function PATCH(
       body.appLogo ?? ""
     ).trim();
 
+    const appCopyright = String(
+      body.copyright ?? ""
+    ).trim();
+
     if (!appName) {
       return NextResponse.json(
         {
@@ -111,6 +123,17 @@ export async function PATCH(
           success: false,
           error:
             "Nama aplikasi maksimal 80 karakter.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (appCopyright.length > 500) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Teks copyright maksimal 500 karakter.",
         },
         { status: 400 }
       );
@@ -157,6 +180,26 @@ export async function PATCH(
         },
       });
 
+    const copyrightSetting =
+      await prisma.appSetting.upsert({
+        where: {
+          key: COPYRIGHT_KEY,
+        },
+        update: {
+          value:
+            appCopyright ||
+            `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`,
+        },
+        create: {
+          id: crypto.randomUUID(),
+          key: COPYRIGHT_KEY,
+          value:
+            appCopyright ||
+            `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`,
+          updatedAt: new Date(),
+        },
+      });
+
     const logoSetting =
       await prisma.appSetting.upsert({
         where: {
@@ -186,8 +229,12 @@ export async function PATCH(
       metadata: {
         nameKey: NAME_KEY,
         logoKey: LOGO_KEY,
+        copyrightKey: COPYRIGHT_KEY,
         appName: setting.value,
         appLogo: logoSetting.value || "",
+        copyright:
+          copyrightSetting.value ||
+          `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`,
       },
     });
 
@@ -198,6 +245,9 @@ export async function PATCH(
       data: {
         appName: setting.value,
         appLogo: logoSetting.value || "",
+        copyright:
+          copyrightSetting.value ||
+          `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`,
       },
     });
   } catch (error) {

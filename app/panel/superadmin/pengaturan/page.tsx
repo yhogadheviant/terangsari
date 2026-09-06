@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 export default function PengaturanAplikasiPage() {
   const [appName, setAppName] = useState("Smart Warga");
   const [appLogo, setAppLogo] = useState("");
+  const [copyright, setCopyright] = useState(
+    `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,6 +40,11 @@ export default function PengaturanAplikasiPage() {
       setAppLogo(
         data.data?.appLogo || ""
       );
+
+      setCopyright(
+        data.data?.copyright ||
+          `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -55,6 +63,7 @@ export default function PengaturanAplikasiPage() {
   async function saveSettings() {
     const trimmedName = appName.trim();
     const trimmedLogo = appLogo.trim();
+    const trimmedCopyright = copyright.trim();
 
     if (!trimmedName) {
       setError("Nama aplikasi wajib diisi.");
@@ -76,6 +85,7 @@ export default function PengaturanAplikasiPage() {
           body: JSON.stringify({
             appName: trimmedName,
             appLogo: trimmedLogo,
+            copyright: trimmedCopyright,
           }),
         }
       );
@@ -94,6 +104,11 @@ export default function PengaturanAplikasiPage() {
 
       setAppLogo(
         data.data?.appLogo || ""
+      );
+
+      setCopyright(
+        data.data?.copyright ||
+          `© ${new Date().getFullYear()} Smart RT 011 Terangsari 1. All rights reserved.`
       );
 
       setMessage(
@@ -174,6 +189,28 @@ export default function PengaturanAplikasiPage() {
 
             <p className="mt-2 text-xs text-slate-400">
               Maksimal 80 karakter.
+            </p>
+          </div>
+
+          <div className="mt-6">
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+              Teks Copyright
+            </label>
+
+            <textarea
+              value={copyright}
+              onChange={(e) =>
+                setCopyright(e.target.value)
+              }
+              maxLength={500}
+              rows={3}
+              placeholder="© 2026 Smart RT 011 Terangsari 1. All rights reserved."
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+
+            <p className="mt-2 text-xs text-slate-400">
+              Maksimal 500 karakter. Teks ini akan
+              ditampilkan di bagian bawah halaman portal.
             </p>
           </div>
 
