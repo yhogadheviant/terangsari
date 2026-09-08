@@ -308,6 +308,23 @@ export async function PATCH(request: Request) {
         },
       });
 
+      await logActivity({
+        actorUserId: auth.session!.id,
+        actorUsername: auth.session!.username,
+        actorRole: auth.session!.role,
+        action: "DELETE",
+        module: "PERMISSION",
+        targetType: "UserPermission",
+        targetId: userId,
+        description: `Menghapus override permission ${permissionCode} dari akun ${user.username}.`,
+        metadata: {
+          permissionCode,
+          allowed: null,
+        },
+        rTUnitId: user.rTUnitId,
+        request,
+      });
+
       return NextResponse.json({
         success: true,
         message:
@@ -365,5 +382,3 @@ export async function PATCH(request: Request) {
     );
   }
 }
-
-

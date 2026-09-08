@@ -420,6 +420,27 @@ export async function PATCH(request: Request) {
         );
       }
 
+      if (existing.wargaId) {
+        const linkedWarga = await prisma.warga.findUnique({
+          where: {
+            id: existing.wargaId,
+          },
+          select: {
+            rTUnitId: true,
+          },
+        });
+
+        if (
+          linkedWarga?.rTUnitId &&
+          linkedWarga.rTUnitId !== rTUnitId
+        ) {
+          return errorResponse(
+            "RT akun tidak boleh dipindahkan karena Warga terkait masih terdaftar pada RT berbeda.",
+            400
+          );
+        }
+      }
+
       data.rTUnitId = rTUnitId;
     }
 
