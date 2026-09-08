@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getRTContext } from "@/app/lib/auth/rt-context";
 import { requirePermission } from "@/app/lib/auth/authorization";
@@ -383,6 +383,18 @@ export async function POST(req: Request) {
       );
     }
 
+    if (
+      existingWarga &&
+      existingWarga.rTUnitId !== rTUnitId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "NIK tersebut sudah terdaftar pada RT lain dan tidak dapat diubah.",
+        },
+        { status: 403 }
+      );
+    }
     let kkId: string | null = b.kkId || null;
 
 
